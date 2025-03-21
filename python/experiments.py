@@ -79,7 +79,7 @@ class ExecutorExperimentos:
             if diretorio:  # Só cria o diretório se o caminho não for vazio
                 os.makedirs(diretorio, exist_ok=True)
     
-    def executar_algoritmo(self, algoritmo, arquivo_instancia, timeout=30):
+    def executar_algoritmo(self, algoritmo, arquivo_instancia, timeout=60):
         """
         Executa um algoritmo em uma instância específica e mede seu desempenho.
         
@@ -156,7 +156,7 @@ class ExecutorExperimentos:
             print(f"  - {algoritmo} erro inesperado: {str(e)}")
             return None, None
     
-    def executar_variando_n(self, valores_n=[10, 20, 40, 80], W=25, num_instancias=2):
+    def executar_variando_n(self, valores_n=[100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600], W=100, num_instancias=20):
         """
         Executa experimentos variando o número de itens (n).
         
@@ -193,7 +193,7 @@ class ExecutorExperimentos:
                 # Testa cada algoritmo
                 for algoritmo in self.resultados.keys():
                     # Pula backtracking para n grande para evitar timeout
-                    if algoritmo == 'run_backtracking' and n > 30:
+                    if algoritmo == 'run_backtracking' and n > 100:
                         print(f"  Pulando {algoritmo} para n={n} (muito grande)")
                         resultados.append({
                             'n': n,
@@ -227,7 +227,7 @@ class ExecutorExperimentos:
         
         return df_resultados
     
-    def executar_variando_W(self, valores_W=[25, 50, 100, 200], n=80, num_instancias=2):
+    def executar_variando_W(self, valores_W=[100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600], n=400, num_instancias=20):
         """
         Executa experimentos variando a capacidade da mochila (W).
         
@@ -263,7 +263,7 @@ class ExecutorExperimentos:
                 
                 # Para n grande, pular backtracking
                 algoritmos = ['run_dynamic_programming', 'run_branch_and_bound']
-                if n <= 30:
+                if n <= 100:
                     algoritmos.append('run_backtracking')
                 
                 # Testa cada algoritmo
@@ -444,7 +444,54 @@ class ExecutorExperimentos:
                 print(f"  Instâncias geradas com sucesso")
         except Exception as e:
             print(f"  Erro ao gerar instâncias: {str(e)}")
-
+    
+    def realizar_teste_t_pareado(self, df_resultados):
+        """
+        Realiza teste t pareado com 95% de confiança para comparar algoritmos.
+        
+        Args:
+            df_resultados (DataFrame): DataFrame com resultados dos experimentos.
+        """
+        algoritmos = sorted(df_resultados['algoritmo'].unique())
+        
+        # Para cada par de algoritmos
+        for i in range(len(algoritmos)):
+            for j in range(i+1, len(algoritmos)):
+                alg1 = algoritmos[i]
+                alg2 = algoritmos[j]
+                
+                # Filtra resultados para instâncias que têm dados para ambos algoritmos
+                instancias_alg1 = set(df_resultados[df_resultados['algoritmo'] == alg1]['instancia'])
+                instancias_alg2 = set(df_resultados[df_resultados['algoritmo'] == alg2]['instancia'])
+                instancias_comuns = instancias_alg1.intersection(instancias_alg2)
+                
+                tempos_alg1 = []
+                tempos_alg2 = []
+                
+                for inst in instancias_comuns:
+                    tempo1 = df_resultados[(df_resultados['algoritmo'] == alg1) & 
+                                        (df_resultados['instancia'] == inst)]['tempo'].values[0]
+                    tempo2 = df_resultados[(df_resultados['algoritmo'] == alg2) & 
+                                        (df_resultados['instancia'] == inst)]['tempo'].values[0]
+                    
+                    if not pd.isna(tempo1) and not pd.isna(tempo2):
+                        tempos_alg1.append(tempo1)
+                        tempos_alg2.append(tempo2)
+                
+                if len(tempos_alg1) > 1:  # Necessário pelo menos 2 amostras para o teste t
+                    t_stat, p_valor = stats.ttest_rel(tempos_alg1, tempos_alg2)
+                    
+                    print(f"\nComparação entre {alg1} e {alg2}:")
+                    print(f"  Média {alg1}: {np.mean(tempos_alg1):.6f} s")
+                    print(f"  Média {alg2}: {np.mean(tempos_alg2):.6f} s")
+                    print(f"  Estatística t: {t_stat:.4f}")
+                    print(f"  p-valor: {p_valor:.6f}")
+                    
+                    if p_valor < 0.05:  # 95% de confiança
+                        melhor = alg1 if np.mean(tempos_alg1) < np.mean(tempos_alg2) else alg2
+                        print(f"  Resultado: {melhor} é estatisticamente melhor (95% de confiança)")
+                    else:
+                        print(f"  Resultado: Empate estatístico (95% de confiança)")
 
 def main():
     """Função principal para coordenar a execução dos experimentos."""
@@ -474,7 +521,15 @@ def main():
     executor.analisar_resultados(df_resultados_n, parametro_variavel='n')
     executor.analisar_resultados(df_resultados_W, parametro_variavel='W')
     
-    print("Experimentos concluídos e resultados analisados!")
+    # Realiza análise estatística para comparar algoritmos
+    print("\n===== Análise Estatística: Comparação entre Algoritmos =====")
+    print("\nResultados para experimentos variando n:")
+    executor.realizar_teste_t_pareado(df_resultados_n)
+    
+    print("\nResultados para experimentos variando W:")
+    executor.realizar_teste_t_pareado(df_resultados_W)
+    
+    print("\nExperimentos concluídos e resultados analisados!")
     print(f"Gráficos salvos em: {executor.diretorio_graficos}")
     print(f"Resultados CSV salvos em: {executor.diretorio_resultados}")
 
