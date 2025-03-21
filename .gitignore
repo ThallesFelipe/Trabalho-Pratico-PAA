@@ -1,0 +1,38 @@
+# Build and output directories
+build/
+bin/
+out/
+cmake-build-*/
+output/
+instancias_*/
+
+# Compiled files
+*.o
+*.obj
+*.exe
+*.out
+
+# Python related
+__pycache__/
+*.py[cod]
+*$py.class
+python/config.py
+venv/
+env/
+ENV/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Data and visualization outputs
+/*.csv
+/*.png
+
+# Specific executables
+mochila_programacao_dinamica
+mochila_backtracking
+mochila_branch_and_bound
+gerador_instancias
