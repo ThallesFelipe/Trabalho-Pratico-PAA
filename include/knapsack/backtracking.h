@@ -4,7 +4,10 @@
  *
  * Este arquivo contém a declaração do algoritmo de Backtracking para resolver o
  * Problema da Mochila, incluindo técnicas de poda para melhorar o desempenho.
- *
+ * 
+ * @author David Souza do Nascimento - 19.2.4029
+ * @author Luiz Henrique de Carvalho - 21.2.4106
+ * @author Thalles Felipe Rodrigues de Almeidad Santos - 21.2.4130
  * @date Março 2025
  */
 

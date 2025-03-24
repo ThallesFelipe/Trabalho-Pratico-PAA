@@ -83,7 +83,7 @@ int main(int argc, char *argv[])
         std::cout << "Itens selecionados: ";
         for (int indice : itens_selecionados)
         {
-            std::cout << indice + 1 << " "; // Ajuste para exibição base-1 (mais amigável ao usuário)
+            std::cout << indice + 1 << " ";
         }
         std::cout << std::endl;
         std::cout << "Tempo de execução: " << std::fixed << std::setprecision(6) << duracao.count() << " segundos" << std::endl;

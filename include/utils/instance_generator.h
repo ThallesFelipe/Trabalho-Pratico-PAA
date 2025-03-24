@@ -7,7 +7,9 @@
  *
  * As instâncias são geradas com valores aleatórios para pesos e valores
  * e salvas em arquivos de texto para serem utilizadas nos experimentos.
- *
+ * @author David Souza do Nascimento - 19.2.4029
+ * @author Luiz Henrique de Carvalho - 21.2.4106
+ * @author Thalles Felipe Rodrigues de Almeidad Santos - 21.2.4130
  * @date Março 2025
  */
 

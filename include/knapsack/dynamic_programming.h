@@ -5,7 +5,9 @@
  * Este arquivo contém as declarações dos algoritmos de Programação Dinâmica
  * para resolver o Problema da Mochila, incluindo uma versão padrão com
  * matriz 2D e uma versão otimizada com uso de array 1D.
- *
+ * @author David Souza do Nascimento - 19.2.4029
+ * @author Luiz Henrique de Carvalho - 21.2.4106
+ * @author Thalles Felipe Rodrigues de Almeidad Santos - 21.2.4130
  * @date Março 2025
  */
 
