@@ -59,6 +59,32 @@ except ImportError as e:
     GRAPHS_DIR = os.path.join(PROJECT_ROOT, "graphs")
     print(f"Usando diretórios padrão: {BINARY_DIR, OUTPUT_DIR, INSTANCES_DIR, RESULTS_DIR, GRAPHS_DIR}")
 
+# Adicionar após as importações iniciais:
+def verificar_dependencias():
+    """Verifica e instala dependências necessárias se não estiverem presentes."""
+    try:
+        import pkg_resources
+        pacotes_necessarios = ['pandas', 'numpy', 'matplotlib', 'seaborn', 'openpyxl', 'scipy', 'tabulate']
+        pacotes_instalar = []
+        
+        for pacote in pacotes_necessarios:
+            try:
+                pkg_resources.get_distribution(pacote)
+            except pkg_resources.DistributionNotFound:
+                pacotes_instalar.append(pacote)
+        
+        if pacotes_instalar:
+            print(f"Instalando pacotes necessários: {', '.join(pacotes_instalar)}")
+            import subprocess
+            for pacote in pacotes_instalar:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", pacote])
+            print("Dependências instaladas com sucesso!")
+    except Exception as e:
+        print(f"Aviso: Verificação automática de dependências falhou: {e}")
+
+# Chamar a função no início do script
+verificar_dependencias()
+
 class TimeoutException(Exception):
     """Exceção lançada quando um algoritmo excede o tempo limite de execução."""
     pass
@@ -73,30 +99,31 @@ class ExecutorExperimentos:
     def __init__(self, diretorio_binarios=None, diretorio_instancias=None, 
                  diretorio_resultados=None, diretorio_graficos=None):
         """Inicializa o executor com os diretórios necessários."""
-        # Configuração de diretórios
+        # Configuração de sistema
         self.eh_windows = platform.system() == "Windows"
+        self.eh_wsl = "microsoft" in os.uname().release.lower() if hasattr(os, 'uname') else False
         
-        # Obter diretório raiz do projeto
-        projeto_raiz = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        # Carregar diretórios das configurações ou usar padrões
+        self.diretorio_binarios = diretorio_binarios or BINARY_DIR
+        self.diretorio_saida = OUTPUT_DIR
+        self.diretorio_instancias = diretorio_instancias or INSTANCES_DIR
+        self.diretorio_resultados = diretorio_resultados or RESULTS_DIR
+        self.diretorio_graficos = diretorio_graficos or GRAPHS_DIR
         
-        # Configurar diretórios padrão se não informados
-        self.diretorio_binarios = diretorio_binarios or os.path.join(projeto_raiz, "bin")
-        self.diretorio_instancias = diretorio_instancias or os.path.join(projeto_raiz, "output", "instances")
-        self.diretorio_resultados = diretorio_resultados or os.path.join(projeto_raiz, "output", "results")
-        self.diretorio_graficos = diretorio_graficos or os.path.join(self.diretorio_resultados, "graficos")
+        # Convert paths for WSL if needed
+        if self.eh_wsl:
+            self.diretorio_binarios = convert_to_wsl_path(self.diretorio_binarios)
+            self.diretorio_saida = convert_to_wsl_path(self.diretorio_saida)
+            self.diretorio_instancias = convert_to_wsl_path(self.diretorio_instancias)
+            self.diretorio_resultados = convert_to_wsl_path(self.diretorio_resultados)
+            self.diretorio_graficos = convert_to_wsl_path(self.diretorio_graficos)
         
-        # Criar diretórios se não existirem
-        for diretorio in [self.diretorio_resultados, self.diretorio_graficos]:
-            os.makedirs(diretorio, exist_ok=True)
-            
-        # Verificar existência dos diretórios necessários
-        if not os.path.exists(self.diretorio_binarios):
-            print(f"AVISO: Diretório de binários '{self.diretorio_binarios}' não encontrado!")
+        print(f"Usando diretórios: {self.diretorio_binarios}, {self.diretorio_instancias}, {self.diretorio_resultados}, {self.diretorio_graficos}")
         
-        if not os.path.exists(self.diretorio_instancias):
-            print(f"AVISO: Diretório de instâncias '{self.diretorio_instancias}' não encontrado!")
-            os.makedirs(self.diretorio_instancias, exist_ok=True)
-            print(f"Diretório de instâncias criado em '{self.diretorio_instancias}'")
+        # Criar diretórios necessários se não existirem
+        for diretorio in [self.diretorio_saida, self.diretorio_instancias, self.diretorio_resultados, self.diretorio_graficos]:
+            if diretorio:  # Só cria se o caminho não for vazio
+                os.makedirs(diretorio, exist_ok=True)
         
         # Dicionário para armazenar resultados dos algoritmos
         self.resultados = {
@@ -157,9 +184,8 @@ class ExecutorExperimentos:
         
         print("Arquivos CSV inicializados com sucesso.")
 
-    def executar_algoritmo(self, algoritmo, arquivo_instancia, timeout=30):
+    def executar_algoritmo(self, algoritmo, arquivo_instancia, timeout=60):
         """Executa um algoritmo específico em uma instância e retorna o tempo e valor."""
-        
         # Determina o executável a ser usado
         executavel = os.path.join(self.diretorio_binarios, algoritmo)
         if self.eh_windows and not executavel.endswith('.exe'):
@@ -167,32 +193,35 @@ class ExecutorExperimentos:
         
         # Verifica se o executável existe
         if not os.path.exists(executavel):
-            print(f"Executável '{executavel}' não encontrado!")
+            print(f"ERRO: Executável '{executavel}' não encontrado!")
             return None, None
-        
-        # Configura handler de timeout para sistemas Unix
-        if not self.eh_windows:
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(timeout)
         
         try:
             print(f"Executando {algoritmo} em {arquivo_instancia}")
+            
+            # Configura handler de timeout para sistemas Unix
+            if not self.eh_windows:
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(timeout)
             
             # Inicia medição de tempo
             tempo_inicio = time.time()
             
             # Executa o processo com tratamento diferenciado para Windows
-            if self.eh_windows:
-                try:
-                    resultado = subprocess.run([executavel, arquivo_instancia], 
-                                          capture_output=True, text=True, timeout=timeout)
-                except subprocess.TimeoutExpired:
-                    print(f"  - {algoritmo} excedeu o tempo limite de {timeout} segundos")
-                    return None, None
-            else:
-                resultado = subprocess.run([executavel, arquivo_instancia], 
-                                      capture_output=True, text=True)
-                signal.alarm(0)  # Desativa o alarme após a execução
+            try:
+                resultado = subprocess.run(
+                    [executavel, arquivo_instancia], 
+                    capture_output=True, 
+                    text=True, 
+                    timeout=timeout
+                )
+                
+                if not self.eh_windows:
+                    signal.alarm(0)  # Desativa o alarme após a execução
+                    
+            except subprocess.TimeoutExpired:
+                print(f"  - {algoritmo} excedeu o tempo limite de {timeout} segundos")
+                return None, None
             
             # Calcula o tempo de execução
             tempo_execucao = time.time() - tempo_inicio
@@ -200,44 +229,36 @@ class ExecutorExperimentos:
             # Verifica se a execução foi bem-sucedida
             if resultado.returncode != 0:
                 print(f"  - {algoritmo} falhou com código {resultado.returncode}")
-                print(f"  - Erro: {resultado.stderr}")
+                if resultado.stderr:
+                    print(f"  - Erro: {resultado.stderr}")
                 return None, None
             
             # Analisa a saída para extrair o valor máximo
-            linhas_saida = resultado.stdout.strip().split('\n')
             valor_maximo = None
-
-            # Procura por "Valor máximo:" na saída
-            for linha in linhas_saida:
+            for linha in resultado.stdout.strip().split('\n'):
                 if "Valor máximo:" in linha:
                     try:
                         valor_maximo = int(linha.split(":")[-1].strip())
                         break
                     except ValueError:
-                        print(f"  - {algoritmo} formato de saída inválido: '{linha}'")
-                        print(f"  - Saída completa: {resultado.stdout}")
-                        return None, None
-
-            # Verificação adicional
-            if valor_maximo is None:
-                print(f"  - {algoritmo} não retornou um valor máximo")
-                print(f"  - Saída completa: {resultado.stdout}")
-                if resultado.stderr:
-                    print(f"  - Erro: {resultado.stderr}")
-                return None, None
+                        print(f"  - Formato de saída inválido: '{linha}'")
+                        continue
             
+            if valor_maximo is None:
+                print(f"  - Não foi possível obter o valor máximo da saída")
+                return None, None
+                
             return tempo_execucao, valor_maximo
-        
+            
         except (subprocess.TimeoutExpired, TimeoutException):
             if not self.eh_windows:
-                signal.alarm(0)  # Desativa o alarme em caso de timeout
+                signal.alarm(0)
             print(f"  - {algoritmo} excedeu o tempo limite de {timeout} segundos")
             return None, None
-        
         except Exception as e:
             if not self.eh_windows:
-                signal.alarm(0)  # Desativa o alarme em caso de erro
-            print(f"  - {algoritmo} erro inesperado: {str(e)}")
+                signal.alarm(0)
+            print(f"  - Erro inesperado: {str(e)}")
             return None, None
     
     def executar_variando_n(self, valores_n=[10, 20, 30, 40, 50], W=50, num_instancias=5):
@@ -425,6 +446,11 @@ class ExecutorExperimentos:
         tabela_resumo = []
         cabecalho_resumo = ["Algoritmo", f"{parametro_variavel.upper()}", "Tempo Médio (s)", "IC 95%", "Valor Máximo"]
         
+        # Configurar estilo para os gráficos
+        plt.style.use('seaborn-v0_8-whitegrid')
+        plt.rcParams['font.size'] = 12
+        plt.rcParams['figure.figsize'] = (12, 8)
+        
         # Calcula estatísticas para cada algoritmo
         for algoritmo in algoritmos:
             medias_algoritmo = []
@@ -555,120 +581,286 @@ class ExecutorExperimentos:
     
     def gerar_graficos_comparativos(self, df_resultados):
         """Gera gráficos mais informativos para comparação dos algoritmos."""
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        import numpy as np
+        
         # Definir estilo visual consistente
         plt.style.use('seaborn-v0_8-whitegrid')
-        
-        # Configuração para melhor legibilidade
-        plt.rcParams['figure.figsize'] = (12, 8)
+        plt.rcParams['figure.figsize'] = (14, 10)
         plt.rcParams['font.size'] = 12
         
-        # 1. Gráfico comparativo principal com barras de erro
-        for param_variavel in ['n', 'W']:
-            # Agrupar dados por parâmetro variável e algoritmo
-            agrupado = df_resultados.groupby([param_variavel, 'algoritmo'])['tempo'].agg(['mean', 'std']).reset_index()
+        # Mapeamento de nomes de algoritmos para exibição mais amigável
+        mapa_nomes = {
+            'run_dynamic_programming': 'Programação Dinâmica',
+            'run_backtracking': 'Backtracking',
+            'run_branch_and_bound': 'Branch and Bound'
+        }
+        
+        # Cores consistentes para os algoritmos
+        cores_algoritmos = {
+            'run_dynamic_programming': '#1f77b4',  # azul
+            'run_backtracking': '#ff7f0e',         # laranja
+            'run_branch_and_bound': '#2ca02c'      # verde
+        }
+        
+        # Verificar dados
+        if df_resultados is None or df_resultados.empty:
+            print("Sem dados para gerar gráficos comparativos.")
+            return
+        
+        # Criar cópia local para manipulação
+        df = df_resultados.copy()
+        
+        # Garantir que os tipos estão corretos
+        df['tempo'] = pd.to_numeric(df['tempo'], errors='coerce')
+        
+        # Para cada parâmetro variável (n e W)
+        for param in ['n', 'W']:
+            if param not in df.columns:
+                continue
+                
+            df[param] = pd.to_numeric(df[param], errors='coerce')
             
-            # Criar figura com tamanho adequado
-            plt.figure(figsize=(14, 8))
+            # 1. Gráfico de tempo médio por parâmetro com barras de erro
+            plt.figure(figsize=(14, 10))
             
-            # Lista de algoritmos para cores consistentes
-            algoritmos = df_resultados['algoritmo'].unique()
-            cores = plt.cm.tab10(np.linspace(0, 1, len(algoritmos)))
+            # Agrupar por parâmetro e algoritmo, calcular média e desvio padrão
+            agrupado = df.groupby([param, 'algoritmo']).agg({
+                'tempo': ['mean', 'std', 'count']
+            }).reset_index()
             
-            # Plotar cada algoritmo com barras de erro
-            for i, alg in enumerate(algoritmos):
+            agrupado.columns = [param, 'algoritmo', 'tempo_medio', 'tempo_std', 'contagem']
+            
+            # Plotar cada algoritmo
+            for alg in df['algoritmo'].unique():
                 dados_alg = agrupado[agrupado['algoritmo'] == alg]
-                plt.errorbar(dados_alg[param_variavel], dados_alg['mean'], 
-                             yerr=dados_alg['std'], fmt='o-', 
-                             linewidth=2, capsize=5, 
-                             label=alg.replace('run_', ''), 
-                             color=cores[i])
+                if dados_alg.empty:
+                    continue
+                    
+                # Calcular o erro padrão (para barras de erro)
+                dados_alg = dados_alg.copy()
+                dados_alg.loc[:, 'erro'] = dados_alg['tempo_std'] / np.sqrt(dados_alg['contagem'])
+                
+                plt.errorbar(
+                    dados_alg[param],
+                    dados_alg['tempo_medio'],
+                    yerr=dados_alg['erro'],
+                    fmt='o-',
+                    linewidth=3,
+                    capsize=6,
+                    markersize=10,
+                    label=mapa_nomes.get(alg, alg),
+                    color=cores_algoritmos.get(alg)
+                )
+                
+                # Adicionar rótulos para pontos-chave
+                for i, row in dados_alg.iterrows():
+                    if i % 2 == 0 or i == len(dados_alg) - 1:  # Rotular pontos alternados e o último
+                        plt.text(
+                            row[param] * 1.02,
+                            row['tempo_medio'] * 1.05,
+                            f"{row['tempo_medio']:.4f}s",
+                            fontsize=10,
+                            fontweight='bold',
+                            ha='left'
+                        )
             
-            # Adicionar anotações para valores importantes
-            for i, alg in enumerate(algoritmos):
-                dados_alg = agrupado[agrupado['algoritmo'] == alg]
-                # Anotar apenas alguns pontos importantes para não sobrecarregar
-                for j, row in dados_alg.iterrows():
-                    if j % 2 == 0:  # Anotar apenas pontos alternados
-                        plt.text(row[param_variavel], row['mean']*1.05, 
-                                 f"{row['mean']:.4f}s", 
-                                 ha='center', fontsize=9, color=cores[i])
-            
-            # Melhorar layout e legendas
-            plt.title(f'Comparação de Tempo de Execução por {param_variavel.upper()}', fontsize=16, fontweight='bold')
-            plt.xlabel(f'Valor de {param_variavel}', fontsize=14)
-            plt.ylabel('Tempo médio (segundos)', fontsize=14)
+            # Configurações do gráfico
+            plt.title(f'Comparação de Desempenho - Variando {param.upper()}', fontsize=18, fontweight='bold')
+            plt.xlabel(f'{"Número de Itens (n)" if param == "n" else "Capacidade da Mochila (W)"}', fontsize=14)
+            plt.ylabel('Tempo de Execução (segundos)', fontsize=14)
             plt.grid(True, alpha=0.3, linestyle='--')
-            plt.legend(title='Algoritmo', fontsize=12, loc='best')
+            plt.legend(fontsize=12, title='Algoritmos', title_fontsize=14)
             
-            # Ajustar escala do eixo Y para melhor visualização
+            # Ajustar escala para melhor visualização
+            if len(agrupado[param].unique()) > 1:
+                plt.xscale('log', base=2)
             plt.yscale('log')
-            plt.tight_layout()
             
-            # Salvar com alta resolução
-            plt.savefig(os.path.join(self.diretorio_graficos, f'comparacao_tempo_{param_variavel}.png'), dpi=300)
+            plt.tight_layout()
+            plt.savefig(os.path.join(self.diretorio_graficos, f'comparativo_tempo_{param}.png'), dpi=300)
+            plt.close()
+            
+            # 2. Gráfico de boxplot para comparação da distribuição de tempos
+            plt.figure(figsize=(14, 8))
+            sns.boxplot(
+                x=param, 
+                y='tempo', 
+                hue='algoritmo',
+                data=df, 
+                palette=cores_algoritmos
+            )
+            plt.title(f'Distribuição dos Tempos por {param.upper()}', fontsize=16, fontweight='bold')
+            plt.xlabel(f'{"Número de Itens (n)" if param == "n" else "Capacidade da Mochila (W)"}', fontsize=14)
+            plt.ylabel('Tempo (segundos)', fontsize=14)
+            plt.yscale('log')
+            plt.legend(title='Algoritmo', fontsize=12)
+            plt.tight_layout()
+            plt.savefig(os.path.join(self.diretorio_graficos, f'boxplot_{param}.png'), dpi=300)
+            plt.close()
+            
+            # 3. Gráfico de linhas para comparar crescimento de tempo
+            plt.figure(figsize=(14, 8))
+            sns.lineplot(
+                x=param, 
+                y='tempo', 
+                hue='algoritmo',
+                data=df, 
+                palette=cores_algoritmos,
+                err_style='band',
+                errorbar=('ci', 95)
+            )
+            plt.title(f'Crescimento do Tempo de Execução com {param.upper()}', fontsize=16, fontweight='bold')
+            plt.xlabel(f'{"Número de Itens (n)" if param == "n" else "Capacidade da Mochila (W)"}', fontsize=14)
+            plt.ylabel('Tempo (segundos)', fontsize=14)
+            plt.yscale('log')
+            if len(df[param].unique()) > 1:
+                plt.xscale('log', base=2)
+            plt.grid(True, alpha=0.3, linestyle='--')
+            plt.legend(title='Algoritmo', fontsize=12)
+            plt.tight_layout()
+            plt.savefig(os.path.join(self.diretorio_graficos, f'crescimento_{param}.png'), dpi=300)
             plt.close()
         
-        # 2. Gráfico de boxplot para distribuição dos tempos
+        # 4. Gráfico de barras para comparação global entre algoritmos
+        plt.figure(figsize=(12, 8))
+        comparacao_global = df.groupby('algoritmo')['tempo'].agg(['mean', 'std', 'count']).reset_index()
+        comparacao_global['erro'] = comparacao_global['std'] / np.sqrt(comparacao_global['count'])
+        
+        # Ordenar algoritmos pela média de tempo (do mais rápido ao mais lento)
+        comparacao_global = comparacao_global.sort_values('mean')
+        
+        # Converter nomes de algoritmos
+        comparacao_global['nome_amigavel'] = comparacao_global['algoritmo'].map(mapa_nomes)
+        
+        # Plot de barras com erro
+        plt.bar(
+            comparacao_global['nome_amigavel'],
+            comparacao_global['mean'],
+            yerr=comparacao_global['erro'],
+            capsize=8,
+            color=[cores_algoritmos.get(alg) for alg in comparacao_global['algoritmo']],
+            alpha=0.8
+        )
+        
+        # Adicionar valores nas barras
+        for i, row in comparacao_global.iterrows():
+            plt.text(
+                i, 
+                row['mean'] * 0.5, 
+                f"{row['mean']:.4f}s",
+                ha='center',
+                color='white',
+                fontweight='bold',
+                fontsize=12
+            )
+        
+        plt.title('Comparação Global de Desempenho', fontsize=16, fontweight='bold')
+        plt.ylabel('Tempo Médio (segundos)', fontsize=14)
+        plt.grid(axis='y', alpha=0.3, linestyle='--')
+        plt.tight_layout()
+        plt.savefig(os.path.join(self.diretorio_graficos, 'comparacao_global.png'), dpi=300)
+        plt.close()
+        
+        # 5. Gráfico de distribuição dos tempos por algoritmo
         plt.figure(figsize=(14, 8))
-        sns.boxplot(x='algoritmo', y='tempo', hue='algoritmo', 
-                    data=df_resultados, palette='tab10')
+        sns.violinplot(
+            x='algoritmo', 
+            y='tempo', 
+            hue='algoritmo',
+            data=df,
+            palette=cores_algoritmos,
+            inner='quartile',
+            legend=False
+        )
+        
+        # Converter nomes no eixo X
+        plt.xticks(
+            range(len(df['algoritmo'].unique())),
+            [mapa_nomes.get(alg, alg) for alg in df['algoritmo'].unique()]
+        )
+        
         plt.title('Distribuição dos Tempos de Execução por Algoritmo', fontsize=16, fontweight='bold')
         plt.xlabel('Algoritmo', fontsize=14)
         plt.ylabel('Tempo (segundos)', fontsize=14)
         plt.yscale('log')
-        plt.xticks(rotation=45)
         plt.tight_layout()
         plt.savefig(os.path.join(self.diretorio_graficos, 'distribuicao_tempos.png'), dpi=300)
         plt.close()
+        
+        print(f"Gráficos comparativos gerados com sucesso em: {self.diretorio_graficos}")
     
-    def executar_gerador_instancias(self, num_instancias, n, W):
+    def executar_gerador_instancias(self, num_instancias, n, W, force_regenerate=False):
         """
-        Executa o gerador de instâncias e verifica se os arquivos foram criados corretamente.
+        Executa o gerador de instâncias ou usa instâncias existentes.
         
         Args:
             num_instancias: Número de instâncias a serem geradas
             n: Número de itens
             W: Capacidade da mochila
-        
+            force_regenerate: Se True, força a regeneração mesmo se as instâncias já existirem
+            
         Returns:
-            bool: True se as instâncias foram geradas com sucesso, False caso contrário
+            bool: True se as instâncias estão disponíveis, False caso contrário
         """
-        import subprocess
         import os
+        import subprocess
         
-        # Verifica se o diretório de saída existe
+        # Diretório onde as instâncias serão/estão armazenadas
         diretorio_saida = os.path.join(self.diretorio_instancias, f"instancias_n{n}_W{W}")
         os.makedirs(diretorio_saida, exist_ok=True)
         
-        # Comando para executar o gerador de instâncias
-        comando = [os.path.join(self.diretorio_binarios, "generate_instances"), 
-                   str(num_instancias), str(n), str(W)]
+        # Verifica se já existem instâncias suficientes
+        arquivos_existentes = [f for f in os.listdir(diretorio_saida) 
+                             if f.startswith("instancia_") and f.endswith(".txt")]
+        
+        # Se já temos instâncias suficientes e não estamos forçando a regeneração, use as existentes
+        if len(arquivos_existentes) >= num_instancias and not force_regenerate:
+            print(f"Usando {num_instancias} instâncias existentes em {diretorio_saida}")
+            return True
+            
+        # Configurar a variável de ambiente para o gerador saber onde salvar
+        env = os.environ.copy()
+        env["INSTANCES_DIR"] = self.diretorio_instancias
+        
+        # Executável do gerador de instâncias
+        executavel = os.path.join(self.diretorio_binarios, "generate_instances")
+        if self.eh_windows and not executavel.endswith('.exe'):
+            executavel += '.exe'
+        
+        if not os.path.exists(executavel):
+            print(f"ERRO: Gerador de instâncias '{executavel}' não encontrado!")
+            return False
         
         try:
-            print(f"Executando: {' '.join(comando)}")
-            resultado = subprocess.run(comando, 
-                                      capture_output=True, 
-                                      text=True, 
-                                      check=True)
+            print(f"Gerando {num_instancias} instâncias com n={n}, W={W}...")
+            resultado = subprocess.run(
+                [executavel, str(num_instancias), str(n), str(W)],
+                capture_output=True,
+                text=True,
+                check=True,
+                env=env
+            )
             
-            # Verifica se os arquivos foram criados
-            arquivos_criados = [f for f in os.listdir(diretorio_saida) 
-                               if f.startswith("instancia_") and f.endswith(".txt")]
+            # Verificar se as instâncias foram geradas
+            arquivos_gerados = [f for f in os.listdir(diretorio_saida) 
+                              if f.startswith("instancia_") and f.endswith(".txt")]
             
-            if len(arquivos_criados) >= num_instancias:
-                print(f"Geradas {len(arquivos_criados)} instâncias em {diretorio_saida}")
+            if len(arquivos_gerados) >= num_instancias:
+                print(f"Geradas com sucesso {len(arquivos_gerados)} instâncias em {diretorio_saida}")
                 return True
             else:
-                print(f"Aviso: Foram geradas apenas {len(arquivos_criados)} de {num_instancias} instâncias")
-                return len(arquivos_criados) > 0
+                print(f"AVISO: Esperava {num_instancias} instâncias, mas foram geradas apenas {len(arquivos_gerados)}")
+                return len(arquivos_gerados) > 0
                 
         except subprocess.CalledProcessError as e:
-            print(f"Erro ao executar gerador de instâncias: {e}")
-            print(f"Saída: {e.stdout}")
-            print(f"Erro: {e.stderr}")
+            print(f"ERRO ao executar gerador de instâncias: {e}")
+            if e.stdout: print(f"Saída: {e.stdout}")
+            if e.stderr: print(f"Erro: {e.stderr}")
             return False
         except Exception as e:
-            print(f"Erro inesperado ao gerar instâncias: {e}")
+            print(f"ERRO inesperado ao gerar instâncias: {e}")
             return False
     
     def realizar_teste_t_pareado(self, df_resultados):
@@ -953,14 +1145,48 @@ class ExecutorExperimentos:
             print(f"Erro ao gerar visualizações avançadas: {e}")
 
 def main():
-    """Função principal para coordenar a execução dos experimentos."""
+    """Função principal para coordenar a execução dos experimentos com algoritmos do Problema da Mochila."""
     import os
     import pandas as pd
+    import time
+    import concurrent.futures
     
+    print("\n" + "="*80)
+    print("EXPERIMENTOS COM ALGORITMOS DO PROBLEMA DA MOCHILA")
+    print("="*80)
+    print("\nIniciando execução de experimentos e análises...")
+    
+    # Registrar tempo de início para medir o tempo total de execução
+    tempo_inicio = time.time()
+    
+    # Inicializar executor de experimentos
     executor = ExecutorExperimentos()
     
-    # Inicializar arquivos CSV antes de começar
+    # Inicializar arquivos CSV com cabeçalhos corretos
     executor.inicializar_arquivos_csv()
+    
+    # Definir configurações avançadas dos experimentos
+    config = {
+        'valores_n': [10, 20, 30, 40, 50, 60],           # Valores de n a serem testados
+        'valores_W': [20, 40, 60, 80, 100, 120],         # Valores de W a serem testados
+        'num_instancias': 5,                             # Número de instâncias por configuração
+        'timeout_algoritmo': 120,                        # Timeout em segundos para cada execução
+        'W_fixo': 50,                                    # W fixo para experimentos variando n
+        'n_fixo': 30                                     # n fixo para experimentos variando W
+    }
+    
+    print(f"\nConfigurações dos experimentos:")
+    print(f"- Valores de n: {config['valores_n']}")
+    print(f"- Valores de W: {config['valores_W']}")
+    print(f"- Instâncias por configuração: {config['num_instancias']}")
+    print(f"- Timeout por algoritmo: {config['timeout_algoritmo']} segundos")
+    
+    # Verificar diretórios de trabalho
+    print(f"\nDiretórios utilizados:")
+    print(f"- Binários: {executor.diretorio_binarios}")
+    print(f"- Instâncias: {executor.diretorio_instancias}")
+    print(f"- Resultados: {executor.diretorio_resultados}")
+    print(f"- Gráficos: {executor.diretorio_graficos}")
     
     # Verifica se existem resultados salvos
     arquivo_resultados_n = os.path.join(executor.diretorio_resultados, 'resultados_variando_n.csv')
@@ -969,69 +1195,146 @@ def main():
     df_resultados_n = None
     df_resultados_W = None
     
-    # Experimentos variando n
-    try:
-        if os.path.exists(arquivo_resultados_n) and os.path.getsize(arquivo_resultados_n) > 0:
-            print(f"Carregando resultados existentes de {arquivo_resultados_n}")
-            df_resultados_n = pd.read_csv(arquivo_resultados_n)
-            
-            # Verify data integrity
-            if df_resultados_n.empty or 'algoritmo' not in df_resultados_n.columns:
-                print(f"Arquivo {arquivo_resultados_n} existe mas tem dados inválidos. Executando novos experimentos.")
-                df_resultados_n = executor.executar_variando_n()
-            else:
-                print(f"Dados carregados com sucesso: {len(df_resultados_n)} registros.")
+    # Função auxiliar para carregar ou gerar resultados
+    def carregar_ou_gerar(arquivo, funcao_executar, *args):
+        if os.path.exists(arquivo) and os.path.getsize(arquivo) > 0:
+            print(f"Carregando resultados existentes de {arquivo}")
+            try:
+                df = pd.read_csv(arquivo)
+                if df.empty or 'algoritmo' not in df.columns:
+                    print(f"Arquivo {arquivo} existe mas tem dados inválidos. Executando novos experimentos.")
+                    return funcao_executar(*args)
+                else:
+                    print(f"Dados carregados com sucesso: {len(df)} registros.")
+                    return df
+            except Exception as e:
+                print(f"Erro ao carregar {arquivo}: {e}")
+                print("Executando novos experimentos...")
+                return funcao_executar(*args)
         else:
-            print("Executando experimentos variando n")
-            df_resultados_n = executor.executar_variando_n()
-    except Exception as e:
-        print(f"Erro ao processar experimentos variando n: {e}")
-        print("Continuando com os outros experimentos...")
+            print(f"Arquivo {arquivo} não encontrado. Executando experimentos...")
+            return funcao_executar(*args)
     
-    # Experimentos variando W
+    # Execução paralela dos experimentos, se possível
+    print("\n" + "-"*80)
+    print("FASE 1: EXECUÇÃO DOS EXPERIMENTOS")
+    print("-"*80)
+    
     try:
-        if os.path.exists(arquivo_resultados_W) and os.path.getsize(arquivo_resultados_W) > 0:
-            print(f"Carregando resultados existentes de {arquivo_resultados_W}")
-            df_resultados_W = pd.read_csv(arquivo_resultados_W)
-            
-            # Verify data integrity
-            if df_resultados_W.empty or 'algoritmo' not in df_resultados_W.columns:
-                print(f"Arquivo {arquivo_resultados_W} existe mas tem dados inválidos. Executando novos experimentos.")
-                df_resultados_W = executor.executar_variando_W()
-            else:
-                print(f"Dados carregados com sucesso: {len(df_resultados_W)} registros.")
-        else:
-            print("Executando experimentos variando W")
-            df_resultados_W = executor.executar_variando_W()
+        # Experimentos variando n
+        print("\nExecutando experimentos variando n...")
+        df_resultados_n = carregar_ou_gerar(
+            arquivo_resultados_n, 
+            executor.executar_variando_n,
+            config['valores_n'],
+            config['W_fixo'],
+            config['num_instancias']
+        )
+        
+        # Experimentos variando W
+        print("\nExecutando experimentos variando W...")
+        df_resultados_W = carregar_ou_gerar(
+            arquivo_resultados_W, 
+            executor.executar_variando_W,
+            config['valores_W'],
+            config['n_fixo'],
+            config['num_instancias']
+        )
+        
+    except KeyboardInterrupt:
+        print("\nExecução interrompida pelo usuário. Salvando resultados parciais...")
     except Exception as e:
-        print(f"Erro ao processar experimentos variando W: {e}")
+        print(f"\nErro durante execução dos experimentos: {str(e)}")
+        import traceback
+        traceback.print_exc()
     
-    # Análise de resultados combinados (se ambos existirem)
-    if df_resultados_n is not None and df_resultados_W is not None:
-        # Gere análise estatística combinada
-        print("\n===== Análise Estatística: Comparação entre Algoritmos =====\n")
+    # Análise de resultados (se existirem dados)
+    print("\n" + "-"*80)
+    print("FASE 2: ANÁLISE DOS RESULTADOS")
+    print("-"*80)
+    
+    dados_disponiveis = []
+    if df_resultados_n is not None and not df_resultados_n.empty:
+        print("\nAnalisando resultados dos experimentos variando n...")
+        executor.analisar_resultados(df_resultados_n, parametro_variavel='n')
+        dados_disponiveis.append("n")
+    
+    if df_resultados_W is not None and not df_resultados_W.empty:
+        print("\nAnalisando resultados dos experimentos variando W...")
+        executor.analisar_resultados(df_resultados_W, parametro_variavel='W')
+        dados_disponiveis.append("W")
+    
+    # Análise estatística e visualizações avançadas
+    if dados_disponiveis:
+        print("\n" + "-"*80)
+        print("FASE 3: ANÁLISE ESTATÍSTICA E VISUALIZAÇÕES AVANÇADAS")
+        print("-"*80)
         
-        print("Resultados para experimentos variando n:")
-        executor.realizar_teste_t_pareado(df_resultados_n)
-        
-        print("\nResultados para experimentos variando W:")
-        executor.realizar_teste_t_pareado(df_resultados_W)
-        
-        # Gere resumos dos resultados
-        if not df_resultados_n.empty:
+        if "n" in dados_disponiveis:
+            print("\nRealizando testes estatísticos para experimentos variando n...")
+            executor.realizar_teste_t_pareado(df_resultados_n)
             executor.gerar_resumo_resultados(df_resultados_n)
+            executor.gerar_graficos_comparativos(df_resultados_n)
         
-        if not df_resultados_W.empty and 'algoritmo' in df_resultados_W.columns:
+        if "W" in dados_disponiveis:
+            print("\nRealizando testes estatísticos para experimentos variando W...")
+            executor.realizar_teste_t_pareado(df_resultados_W)
             executor.gerar_resumo_resultados(df_resultados_W)
+            executor.gerar_graficos_comparativos(df_resultados_W)
         
-        # Gere visualizações avançadas
-        print("Gerando visualizações avançadas...")
+        print("\nGerando visualizações avançadas combinadas...")
         executor.gerar_visualizacoes_avancadas()
+    else:
+        print("\nNenhum dado disponível para análise estatística.")
     
-    print("\nExperimentos concluídos e resultados analisados!")
+    # Finalização
+    tempo_total = time.time() - tempo_inicio
+    minutos = int(tempo_total // 60)
+    segundos = int(tempo_total % 60)
+    
+    print("\n" + "="*80)
+    print("EXPERIMENTOS CONCLUÍDOS")
+    print("="*80)
+    print(f"Tempo total de execução: {minutos} minutos e {segundos} segundos")
     print(f"Gráficos salvos em: {executor.diretorio_graficos}")
     print(f"Resultados CSV salvos em: {executor.diretorio_resultados}")
+    print(f"Relatórios detalhados em: {os.path.join(executor.diretorio_resultados, 'relatorios')}")
+    
+    if dados_disponiveis:
+        print("\nResultados disponíveis para análise:")
+        if "n" in dados_disponiveis:
+            print(f"- Experimentos variando n: {len(df_resultados_n)} registros")
+        if "W" in dados_disponiveis:
+            print(f"- Experimentos variando W: {len(df_resultados_W)} registros")
+    
+    print("\nPara visualizações mais avançadas, execute o script:")
+    print(f"python {os.path.join('scripts', 'generate_visualizations.py')}")
+    
+    # Salvar uma cópia dos resultados em formato Excel para facilitar a análise
+    try:
+        import openpyxl
+        excel_file = os.path.join(executor.diretorio_resultados, 'resultados_combinados.xlsx')
+        with pd.ExcelWriter(excel_file) as writer:
+            if "n" in dados_disponiveis:
+                df_resultados_n.to_excel(writer, sheet_name='Variando_n', index=False)
+            if "W" in dados_disponiveis:
+                df_resultados_W.to_excel(writer, sheet_name='Variando_W', index=False)
+        print(f"\nResultados também foram salvos em formato Excel: {excel_file}")
+    except ImportError:
+        print("\nResultados disponíveis apenas em CSV. Para salvar em Excel, execute:")
+        print("pip install openpyxl")
+    except Exception as e:
+        print(f"\nErro ao salvar resultados em Excel: {e}")
+    
+    print("\nFim da execução.")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nExecução interrompida pelo usuário.")
+    except Exception as e:
+        print(f"\nErro fatal: {e}")
+        import traceback
+        traceback.print_exc()

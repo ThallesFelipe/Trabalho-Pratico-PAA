@@ -123,7 +123,8 @@ int main(int argc, char *argv[])
 
         // Nome do arquivo baseado no algoritmo para evitar sobreescrita
         std::string output_filename = "backtracking_results.csv";
-        std::string output_file_path = output_path + separator + output_filename;
+        std::filesystem::path output_path(results_dir);
+        std::filesystem::path output_file_path = output_path / output_filename;
         
         std::ofstream output_file(output_file_path);
         if (output_file.is_open()) {

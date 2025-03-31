@@ -110,7 +110,17 @@ int main(int argc, char *argv[])
                 }
             }
         } else {
-            output_path = ".";
+            output_path = "output/results";
+            // Create directory if it doesn't exist
+            std::filesystem::path dir_path(output_path);
+            if (!std::filesystem::exists(dir_path)) {
+                try {
+                    std::filesystem::create_directories(dir_path);
+                } catch (const std::exception& e) {
+                    std::cerr << "Error creating directory: " << e.what() << std::endl;
+                    output_path = ".";
+                }
+            }
         }
 
         // Corrigir o caminho de saída para lidar com WSL vs Windows
@@ -121,7 +131,7 @@ int main(int argc, char *argv[])
 
         // Nome do arquivo baseado no algoritmo para evitar sobreescrita
         std::string output_filename = "branch_and_bound_results.csv";
-        std::string output_file_path = output_path + separator + output_filename;
+        std::filesystem::path output_file_path = std::filesystem::path(output_path) / output_filename;
         
         std::ofstream output_file(output_file_path);
         if (output_file.is_open()) {
