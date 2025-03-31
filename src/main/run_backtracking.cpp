@@ -13,6 +13,10 @@
 #include <vector>
 #include <chrono>
 #include <iomanip>
+#include <cstring>
+#include <filesystem>
+#include <cstdlib>
+#include <stdexcept>
 
 /**
  * @brief Função principal que executa o algoritmo de Backtracking.
@@ -23,6 +27,27 @@
  */
 int main(int argc, char *argv[])
 {
+    // No final do main() antes do bloco try-catch
+    const char* results_dir = std::getenv("RESULTS_DIR");
+    std::string output_path;
+
+    if (results_dir && strlen(results_dir) > 0) {
+        output_path = results_dir;
+        // Criar diretório se não existir
+        std::filesystem::path dir_path(output_path);
+        if (!std::filesystem::exists(dir_path)) {
+            try {
+                std::filesystem::create_directories(dir_path);
+            } catch (const std::exception& e) {
+                std::cerr << "Aviso: Não foi possível criar o diretório '" << output_path 
+                          << "': " << e.what() << std::endl;
+                output_path = ".";
+            }
+        }
+    } else {
+        output_path = ".";
+    }
+
     try
     {
         // Verifica se o número correto de argumentos foi fornecido
@@ -88,9 +113,13 @@ int main(int argc, char *argv[])
         std::cout << std::endl;
         std::cout << "Tempo de execução: " << std::fixed << std::setprecision(6) << duracao.count() << " segundos" << std::endl;
 
-        const char* results_dir = std::getenv("RESULTS_DIR");
-        std::string output_path = results_dir ? results_dir : ".";
         std::ofstream output_file(output_path + "/results.txt");
+        if (output_file.is_open()) {
+            output_file << "Algoritmo: Backtracking" << std::endl;
+            output_file << "Valor máximo: " << valor_maximo << std::endl;
+            output_file << "Tempo de execução: " << std::fixed << std::setprecision(6) << duracao.count() << " segundos" << std::endl;
+            output_file.close();
+        }
 
         return 0;
     }

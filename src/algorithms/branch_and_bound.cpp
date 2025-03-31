@@ -178,7 +178,7 @@ std::pair<int, std::vector<int>> knapsack_branch_and_bound(int capacidade,
             no_incluir.limitante = calcular_limitante(no_incluir, itens, capacidade);
 
             // Atualiza lucro máximo se tivermos uma solução completa
-            if (no_incluir.nivel == n && no_incluir.lucro > lucro_maximo)
+            if (no_incluir.nivel == n && no_incluir.lucro > lucro_maximo && no_incluir.peso <= capacidade)
             {
                 lucro_maximo = no_incluir.lucro;
                 melhor_solucao = no_incluir.selecionados;

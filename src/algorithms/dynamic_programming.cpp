@@ -101,6 +101,7 @@ std::pair<int, std::vector<int>> knapsack_dynamic_programming_optimized(int capa
             w -= pesos[i - 1];
         }
     }
+    
     // Inverte para obter os itens na ordem correta (do primeiro ao último)
     std::reverse(itens_selecionados.begin(), itens_selecionados.end());
 

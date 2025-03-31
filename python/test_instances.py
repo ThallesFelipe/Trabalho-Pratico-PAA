@@ -35,13 +35,17 @@ def testar_instancias(algoritmo, diretorio):
     for instancia in instancias:
         print(f"Testando {instancia}...")
         
+        # Obtém o diretório binário do ambiente ou usa um padrão
+        bin_dir = os.environ.get("BINARY_DIR", "./build/bin")
+        
         # Determina o caminho do executável com base no sistema operacional
-        executavel = algoritmo
         if sys.platform == 'win32':
-            executavel += '.exe'
+            executavel = os.path.join(bin_dir, algoritmo + '.exe')
+        else:
+            executavel = os.path.join(bin_dir, algoritmo)
         
         # Executa o algoritmo com a instância atual
-        comando = [os.path.join('.', executavel), instancia]
+        comando = [executavel, instancia]
         resultado = subprocess.run(comando, capture_output=True, text=True)
         
         # Exibe o resultado

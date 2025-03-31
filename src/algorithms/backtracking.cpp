@@ -90,9 +90,9 @@ void backtrack(int indice, int peso_atual, int valor_atual, const std::vector<It
  * @param valor_restante Soma dos valores dos itens ainda não considerados
  */
 void backtrack_otimizado(int indice, int peso_atual, int valor_atual,
-                         const std::vector<Item> &itens, int capacidade,
-                         std::vector<bool> &selecao_atual, int &valor_maximo,
-                         std::vector<bool> &melhor_selecao, int valor_restante)
+                     const std::vector<Item> &itens, int capacidade,
+                     std::vector<bool> &selecao_atual, int &valor_maximo,
+                     std::vector<bool> &melhor_selecao, int valor_restante)
 {
     // Poda: se o valor atual + valor remanescente não superar o melhor valor encontrado
     if (valor_atual + valor_restante <= valor_maximo)
@@ -118,17 +118,17 @@ void backtrack_otimizado(int indice, int peso_atual, int valor_atual,
     {
         selecao_atual[itens[indice].indice] = true;
         backtrack_otimizado(indice + 1, peso_atual + itens[indice].peso,
-                            valor_atual + itens[indice].valor,
-                            itens, capacidade, selecao_atual, valor_maximo,
-                            melhor_selecao, valor_restante - itens[indice].valor);
+                        valor_atual + itens[indice].valor,
+                        itens, capacidade, selecao_atual, valor_maximo,
+                        melhor_selecao, valor_restante - itens[indice].valor);
         selecao_atual[itens[indice].indice] = false;
     }
 
-    // Pular item
+    // Pular item - corrigindo o valor do parâmetro valor_restante
     backtrack_otimizado(indice + 1, peso_atual, valor_atual,
-                        itens, capacidade, selecao_atual,
-                        valor_maximo, melhor_selecao,
-                        valor_restante - itens[indice].valor);
+                    itens, capacidade, selecao_atual,
+                    valor_maximo, melhor_selecao,
+                    valor_restante - itens[indice].valor);
 }
 
 /**
