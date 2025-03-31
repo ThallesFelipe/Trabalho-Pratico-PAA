@@ -18,10 +18,8 @@ os.makedirs(GRAPHS_DIR, exist_ok=True)
 
 # Carregar dados com parse dates=False para garantir que tempo seja lido corretamente
 print("Carregando dados...")
-df_n = pd.read_csv(os.path.join(RESULTS_DIR, "resultados_variando_n.csv"), 
-                  names=["n", "W", "algoritmo", "instancia", "tempo", "valor"])
-df_W = pd.read_csv(os.path.join(RESULTS_DIR, "resultados_variando_W.csv"),
-                  names=["n", "W", "algoritmo", "instancia", "tempo", "valor"])
+df_n = pd.read_csv(os.path.join(RESULTS_DIR, "resultados_variando_n.csv"))
+df_W = pd.read_csv(os.path.join(RESULTS_DIR, "resultados_variando_W.csv"))
 
 # Garantir que as colunas numéricas sejam do tipo correto
 print("Processando dados...")
@@ -76,31 +74,42 @@ algorithm_names = {
     'run_backtracking': 'Backtracking'
 }
 
-# Filter out any rows where algoritmo is 'algoritmo' (header row)
-df_n = df_n[df_n['algoritmo'] != 'algoritmo']
+# Filter out any rows where algoritmo is 'algoritmo' (header row) or NaN
+df_n = df_n[df_n['algoritmo'].notna() & (df_n['algoritmo'] != 'algoritmo')]
+df_n = df_n.dropna(subset=['tempo'])
 
-df_n['algoritmo_nome'] = df_n['algoritmo'].map(algorithm_names)
+# Apply mapping to create a new column with readable algorithm names
+df_n.loc[:, 'algoritmo_nome'] = df_n['algoritmo'].map(algorithm_names)
+
+# Check if any values weren't mapped correctly and fix them
+if df_n['algoritmo_nome'].isnull().any():
+    print("AVISO: Alguns algoritmos não foram mapeados corretamente!")
+    df_n.loc[df_n['algoritmo_nome'].isnull(), 'algoritmo_nome'] = df_n.loc[df_n['algoritmo_nome'].isnull(), 'algoritmo']
 
 # Add debugging to see what values we have and ensure mapping works
 print("Valores únicos na coluna 'algoritmo':", df_n['algoritmo'].unique())
 print("Valores únicos após mapeamento:", df_n['algoritmo_nome'].unique())
 
-# Check if any NaN values were introduced by the mapping
-if df_n['algoritmo_nome'].isnull().any():
-    print("AVISO: Alguns algoritmos não foram mapeados corretamente!")
-    # Fall back to using original algorithm names if mapping failed
-    df_n['algoritmo_nome'] = df_n['algoritmo_nome'].fillna(df_n['algoritmo'])
-
-# Apply the same filtering and mapping to df_W
-df_W = df_W[df_W['algoritmo'] != 'algoritmo']
-df_W['algoritmo_nome'] = df_W['algoritmo'].map(algorithm_names)
-
-sns.boxplot(data=df_n, x="algoritmo_nome", y="tempo")
+# Create boxplot safely using catplot instead of direct boxplot
+sns.catplot(
+    data=df_n, 
+    x="algoritmo_nome", 
+    y="tempo", 
+    kind="box",
+    height=6,
+    aspect=1.5
+)
 plt.title("Variabilidade no Tempo de Execução por Algoritmo", fontsize=14)
 plt.xlabel("Algoritmo", fontsize=12)
 plt.ylabel("Tempo (segundos)", fontsize=12)
 plt.tight_layout()
 plt.savefig(os.path.join(GRAPHS_DIR, "variabilidade_algoritmos.png"), dpi=300)
+plt.close()
+
+# Apply the same filtering and mapping to df_W
+df_W = df_W[df_W['algoritmo'].notna() & (df_W['algoritmo'] != 'algoritmo')]
+df_W = df_W.dropna(subset=['tempo'])
+df_W.loc[:, 'algoritmo_nome'] = df_W['algoritmo'].map(algorithm_names)
 
 # 4. Heatmap de comparação de desempenho para diferentes valores de n e W
 try:

@@ -1,3 +1,0 @@
-Algoritmo: Branch and Bound
-Valor máximo: 124
-Tempo de execução: 0.000107466 segundos
