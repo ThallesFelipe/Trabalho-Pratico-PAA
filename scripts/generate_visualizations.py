@@ -38,6 +38,17 @@ ALGORITMO_COLORS = {
     'Branch and Bound': '#2ca02c'       # verde
 }
 
+# Adicionar dicionário de tradução para nomes mais amigáveis
+ALGORITMO_NAMES = {
+    'run_dynamic_programming': 'Programação Dinâmica',
+    'run_backtracking': 'Backtracking',
+    'run_branch_and_bound': 'Branch and Bound',
+    # Versões sem o prefixo 'run_'
+    'dynamic_programming': 'Programação Dinâmica',
+    'backtracking': 'Backtracking',
+    'branch_and_bound': 'Branch and Bound'
+}
+
 def verificar_arquivo_csv(arquivo):
     """Verifica se o arquivo CSV existe e não está vazio."""
     return os.path.exists(arquivo) and os.path.getsize(arquivo) > 0
@@ -77,52 +88,39 @@ def limpar_e_converter_dados(df):
 
 def gerar_grafico_tempo_por_parametro(df, parametro_variavel):
     """Gera gráfico de tempo de execução em função do parâmetro variado."""
-    if df is None or df.empty:
-        return
-    
     plt.figure(figsize=(12, 8))
     
-    # Agrupar dados
-    agrupado = df.groupby([parametro_variavel, 'algoritmo']).agg(
-        tempo_medio=('tempo', 'mean'),
-        tempo_std=('tempo', 'std'),
-        tempo_min=('tempo', 'min'),
-        tempo_max=('tempo', 'max')
+    # Agrupar por parâmetro e algoritmo, calcular estatísticas
+    stats_df = df.groupby([parametro_variavel, 'algoritmo'])['tempo'].agg(
+        ['mean', 'std', 'count']
     ).reset_index()
     
-    # Plotar para cada algoritmo
-    for alg in agrupado['algoritmo'].unique():
-        dados = agrupado[agrupado['algoritmo'] == alg]
-        
+    # Calcular intervalo de confiança de 95%
+    stats_df['erro'] = stats_df['std'] / np.sqrt(stats_df['count']) * 1.96
+    
+    # Plotar gráfico para cada algoritmo
+    for algoritmo in df['algoritmo'].unique():
+        dados_alg = stats_df[stats_df['algoritmo'] == algoritmo]
         plt.errorbar(
-            dados[parametro_variavel], 
-            dados['tempo_medio'],
-            yerr=dados['tempo_std'],
-            fmt='o-',
+            dados_alg[parametro_variavel],
+            dados_alg['mean'],
+            yerr=dados_alg['erro'],
+            marker='o',
             capsize=5,
-            linewidth=2.5,
-            markersize=8,
-            label=alg,
-            color=ALGORITMO_COLORS.get(alg, None)
+            label=ALGORITMO_NAMES.get(algoritmo, algoritmo)
         )
     
-    # Configurar o gráfico
-    titulo = 'Tempo de Execução por Número de Itens (n)' if parametro_variavel == 'n' else 'Tempo de Execução por Capacidade da Mochila (W)'
-    plt.title(titulo)
-    plt.xlabel('Número de itens (n)' if parametro_variavel == 'n' else 'Capacidade da mochila (W)')
+    # Configurações do gráfico
+    plt.title(f'Tempo de Execução vs {parametro_variavel.upper()}')
+    plt.xlabel(f'{"Número de itens (n)" if parametro_variavel == "n" else "Capacidade da mochila (W)"}')
     plt.ylabel('Tempo de execução (segundos)')
-    
-    # Usar escala log para melhor visualização
-    if len(agrupado[parametro_variavel].unique()) > 1:
-        plt.xscale('log', base=2)
     plt.yscale('log')
+    plt.grid(True, alpha=0.3)
+    plt.legend()
     
-    plt.legend(title="Algoritmos")
-    plt.grid(True, which="both", ls="--", alpha=0.7)
-    
-    # Salvar figura com alta qualidade
+    # Salvar o gráfico
     plt.tight_layout()
-    plt.savefig(os.path.join(GRAPHS_DIR, f'tempo_vs_{parametro_variavel}.png'), dpi=300)
+    plt.savefig(os.path.join(GRAPHS_DIR, f'tempo_por_{parametro_variavel}.png'), dpi=300)
     plt.close()
 
 def gerar_grafico_valor_por_parametro(df, parametro_variavel):
@@ -366,61 +364,135 @@ def gerar_grafico_speedup(df, parametro_base='n'):
     plt.savefig(os.path.join(GRAPHS_DIR, f'speedup_{parametro_base}.png'), dpi=300)
     plt.close()
 
-def main():
-    """Função principal para gerar visualizações."""
-    print("Iniciando geração de visualizações aprimoradas...")
-
-    # Inicialização de DataFrames
-    df_n = None
-    df_W = None
-
-    # Carregar resultados de variação de n
-    arquivo_n = os.path.join(RESULTS_DIR, "resultados_variando_n.csv")
-    if verificar_arquivo_csv(arquivo_n):
-        try:
-            df_n = pd.read_csv(arquivo_n)
-            df_n = limpar_e_converter_dados(df_n)
-            print(f"Dados de variação de n carregados: {len(df_n)} registros")
-        except Exception as e:
-            print(f"Erro ao processar {arquivo_n}: {e}")
-
-    # Carregar resultados de variação de W
-    arquivo_W = os.path.join(RESULTS_DIR, "resultados_variando_W.csv")
-    if verificar_arquivo_csv(arquivo_W):
-        try:
-            df_W = pd.read_csv(arquivo_W)
-            df_W = limpar_e_converter_dados(df_W)
-            print(f"Dados de variação de W carregados: {len(df_W)} registros")
-        except Exception as e:
-            print(f"Erro ao processar {arquivo_W}: {e}")
-
-    # Verificar se há dados para analisar
-    if (df_n is None or df_n.empty) and (df_W is None or df_W.empty):
-        print("Nenhum dado válido para gerar visualizações.")
+# Adicionar esta função para gerar gráficos de análise assintótica
+def gerar_grafico_analise_assintotica(df, algoritmo):
+    """Gera gráfico para análise assintótica (n vs tempo) para um algoritmo específico."""
+    if df.empty or 'n' not in df.columns or 'tempo' not in df.columns:
+        print(f"Dados insuficientes para análise assintótica de {algoritmo}")
         return
+        
+    dados_alg = df[df['algoritmo'] == algoritmo].copy()
+    if dados_alg.empty:
+        print(f"Sem dados para o algoritmo {algoritmo}")
+        return
+    
+    # Agrupar por n e calcular média
+    dados_agrupados = dados_alg.groupby('n')['tempo'].mean().reset_index()
+    
+    # Check if we have enough data points for curve fitting
+    if len(dados_agrupados) < 3:
+        print(f"Dados insuficientes para ajuste de curvas para {algoritmo} (mínimo 3 pontos, encontrado {len(dados_agrupados)})")
+        
+        # Still plot the scatter points
+        plt.figure(figsize=(10, 7))
+        plt.scatter(dados_agrupados['n'], dados_agrupados['tempo'], marker='o', s=60, label='Dados reais')
+        plt.title(f'Análise Assintótica - {ALGORITMO_NAMES.get(algoritmo, algoritmo)} (Dados insuficientes)')
+        plt.xlabel('Número de itens (n)')
+        plt.ylabel('Tempo de execução (segundos)')
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+        
+        # Salvar gráfico
+        nome_arquivo = f'analise_assintotica_{algoritmo.replace("run_", "")}.png'
+        plt.savefig(os.path.join(GRAPHS_DIR, nome_arquivo), dpi=300)
+        plt.close()
+        return
+        
+    # Continue with curve fitting if we have enough data points
+    from scipy.optimize import curve_fit
+    
+    def linear(x, a, b):
+        return a * x + b
+        
+    def quadratica(x, a, b, c):
+        return a * x**2 + b * x + c
+    
+    def exponencial(x, a, b):
+        return a * np.exp(b * x)
+    
+    x_data = dados_agrupados['n'].values
+    y_data = dados_agrupados['tempo'].values
+    x_line = np.linspace(min(x_data), max(x_data), 100)
+    
+    try:
+        # Ajuste linear
+        params_lin, _ = curve_fit(linear, x_data, y_data)
+        plt.plot(x_line, linear(x_line, *params_lin), 'r-', label=f'Linear: {params_lin[0]:.4f}n + {params_lin[1]:.4f}')
+        
+        # Ajuste quadrático
+        params_quad, _ = curve_fit(quadratica, x_data, y_data)
+        plt.plot(x_line, quadratica(x_line, *params_quad), 'g-', 
+                label=f'Quadrática: {params_quad[0]:.4e}n² + {params_quad[1]:.4e}n + {params_quad[2]:.4e}')
+        
+        # Ajuste exponencial (se os dados permitirem)
+        if all(y > 0 for y in y_data):
+            params_exp, _ = curve_fit(exponencial, x_data, y_data, maxfev=2000)
+            plt.plot(x_line, exponencial(x_line, *params_exp), 'b-', 
+                    label=f'Exponencial: {params_exp[0]:.4e}·e^({params_exp[1]:.4e}·n)')
+    except Exception as e:
+        print(f"Erro no ajuste de curvas para {algoritmo}: {e}")
+    
+    # Formatar gráfico
+    plt.title(f'Análise Assintótica - {ALGORITMO_NAMES.get(algoritmo, algoritmo)}')
+    plt.xlabel('Número de itens (n)')
+    plt.ylabel('Tempo de execução (segundos)')
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    
+    # Salvar gráfico
+    nome_arquivo = f'analise_assintotica_{algoritmo.replace("run_", "")}.png'
+    plt.savefig(os.path.join(GRAPHS_DIR, nome_arquivo), dpi=300)
+    plt.close()
 
-    print("Gerando visualizações...")
-
-    # Gráficos para variação de n
-    if df_n is not None and not df_n.empty:
+def main():
+    """Função principal para gerar todas as visualizações."""
+    print("Iniciando geração de visualizações...")
+    
+    # Verificar se os arquivos de resultados existem
+    arquivos = [
+        os.path.join(RESULTS_DIR, 'resultados_variando_n.csv'),
+        os.path.join(RESULTS_DIR, 'resultados_variando_W.csv')
+    ]
+    
+    dados_disponiveis = []
+    
+    # Carregar dados de experimentos variando n
+    df_n = None
+    if verificar_arquivo_csv(arquivos[0]):
+        df_n = pd.read_csv(arquivos[0])
+        df_n = limpar_e_converter_dados(df_n)
+        dados_disponiveis.append('n')
+        print(f"Dados carregados do arquivo {arquivos[0]}: {len(df_n)} registros")
+    
+    # Carregar dados de experimentos variando W
+    df_W = None
+    if verificar_arquivo_csv(arquivos[1]):
+        df_W = pd.read_csv(arquivos[1])
+        df_W = limpar_e_converter_dados(df_W)
+        dados_disponiveis.append('W')
+        print(f"Dados carregados do arquivo {arquivos[1]}: {len(df_W)} registros")
+    
+    # Gerar visualizações
+    if 'n' in dados_disponiveis:
+        print("Gerando gráficos para experimentos variando n...")
         gerar_grafico_tempo_por_parametro(df_n, 'n')
         gerar_grafico_valor_por_parametro(df_n, 'n')
-        gerar_grafico_speedup(df_n, 'n')
-
-    # Gráficos para variação de W
-    if df_W is not None and not df_W.empty:
+        
+        # Gerar gráficos de análise assintótica para cada algoritmo
+        algoritmos = df_n['algoritmo'].unique()
+        for alg in algoritmos:
+            gerar_grafico_analise_assintotica(df_n, alg)
+    
+    if 'W' in dados_disponiveis:
+        print("Gerando gráficos para experimentos variando W...")
         gerar_grafico_tempo_por_parametro(df_W, 'W')
         gerar_grafico_valor_por_parametro(df_W, 'W')
-        gerar_grafico_speedup(df_W, 'W')
-
-    # Visualizações combinando dados
-    df_combinado = pd.concat([df for df in [df_n, df_W] if df is not None and not df.empty])
-    if not df_combinado.empty:
-        gerar_grafico_comparativo_parametros(df_combinado)
-        gerar_grafico_eficiencia(df_combinado)
-        gerar_heatmap_tempos(df_combinado)
-
-    print(f"Visualizações geradas com sucesso! Arquivos salvos em: {GRAPHS_DIR}")
+    
+    if df_n is not None and df_W is not None:
+        print("Gerando gráfico comparativo de parâmetros...")
+        gerar_grafico_comparativo_parametros(pd.concat([df_n, df_W]))
+    
+    print("Geração de visualizações concluída!")
 
 if __name__ == "__main__":
     main()
