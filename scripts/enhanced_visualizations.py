@@ -32,26 +32,30 @@ ALGORITHM_NAMES = {
 
 def load_and_process_data():
     """Load and process data from results files."""
-    # Load data
-    n_file = os.path.join(RESULTS_DIR, 'resultados_variando_n.csv')
-    w_file = os.path.join(RESULTS_DIR, 'resultados_variando_W.csv')
+    # Read data from CSV files
+    df_n = pd.DataFrame()
+    df_w = pd.DataFrame()
     
-    df_n = pd.read_csv(n_file) if os.path.exists(n_file) else pd.DataFrame()
-    df_w = pd.read_csv(w_file) if os.path.exists(w_file) else pd.DataFrame()
-    
-    # Combine data
+    if os.path.exists(os.path.join(RESULTS_DIR, "resultados_variando_n.csv")):
+        df_n = pd.read_csv(os.path.join(RESULTS_DIR, "resultados_variando_n.csv"))
+        
+    if os.path.exists(os.path.join(RESULTS_DIR, "resultados_variando_W.csv")):
+        df_w = pd.read_csv(os.path.join(RESULTS_DIR, "resultados_variando_W.csv"))
+        
+    # Combine datasets
     df_combined = pd.concat([df_n, df_w], ignore_index=True)
     
-    # Clean data
-    for col in ['n', 'W', 'tempo', 'valor']:
-        if col in df_combined.columns:
-            df_combined[col] = pd.to_numeric(df_combined[col], errors='coerce')
+    if df_combined.empty:
+        return df_combined, df_n, df_w
     
-    # Map algorithm names
-    if 'algoritmo' in df_combined.columns:
-        df_combined['algoritmo_display'] = df_combined['algoritmo'].map(
-            lambda x: ALGORITHM_NAMES.get(x, x)
-        )
+    # Add display names for algorithms
+    df_combined['algoritmo_display'] = df_combined['algoritmo'].map(ALGORITHM_NAMES)
+    
+    # Also add to individual dataframes
+    if not df_n.empty:
+        df_n['algoritmo_display'] = df_n['algoritmo'].map(ALGORITHM_NAMES)
+    if not df_w.empty:
+        df_w['algoritmo_display'] = df_w['algoritmo'].map(ALGORITHM_NAMES)
     
     return df_combined, df_n, df_w
 
@@ -113,12 +117,14 @@ def generate_efficiency_metric_chart(df):
     
     plt.figure(figsize=(12, 8))
     
-    # Create boxplot
+    # Create boxplot - Fix the deprecation warning by assigning hue parameter
     sns.boxplot(
         x='algoritmo_display',
         y='eficiencia',
+        hue='algoritmo_display',  # Add this line to fix the warning
         data=df,
-        palette=ALGORITHM_COLORS
+        palette=ALGORITHM_COLORS,
+        legend=False  # Add this line to avoid duplicate legends
     )
     
     # Add statistical annotations
@@ -146,9 +152,17 @@ def generate_time_complexity_comparison(df_n):
     if df_n.empty or 'n' not in df_n.columns:
         return
     
+    # First, ensure algoritmo_display column exists
+    if 'algoritmo_display' not in df_n.columns:
+        # If missing, create it from the algoritmo column
+        df_n = df_n.copy()  # Create a copy to avoid modifying the original
+        df_n['algoritmo_display'] = df_n['algoritmo'].map(ALGORITHM_NAMES)
+        # If mapping fails (key not found), use the original name
+        df_n['algoritmo_display'] = df_n['algoritmo_display'].fillna(df_n['algoritmo'])
+    
     plt.figure(figsize=(14, 9))
     
-    # Group by n and algorithm, calculate mean time
+    # Now proceed with grouping
     grouped = df_n.groupby(['n', 'algoritmo_display'])['tempo'].mean().reset_index()
     
     # Plot for each algorithm

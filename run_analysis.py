@@ -75,8 +75,8 @@ def main():
     if df_n is not None and not df_n.empty:
         executor.analisar_resultados(df_n, parametro_variavel='n')
         executor.realizar_teste_t_pareado(df_n)
-        executor.realizar_analise_estatistica(df_n)
-    
+        executor.realizar_analise_estatistica_completa(df_n)  # Fixed method name here
+
     if df_W is not None and not df_W.empty:
         executor.analisar_resultados(df_W, parametro_variavel='W')
         executor.realizar_teste_t_pareado(df_W)

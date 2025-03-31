@@ -2,6 +2,8 @@
 #
 # Script para execução automática de experimentos no Linux
 #
+# chmod +x ./scripts/run_experiments_linux.sh
+# ./scripts/run_experiments_linux.sh
 
 echo "===== Verificando pré-requisitos ====="
 
