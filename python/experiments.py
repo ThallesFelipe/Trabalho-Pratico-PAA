@@ -132,6 +132,31 @@ class ExecutorExperimentos:
             if diretorio:  # Só cria o diretório se o caminho não for vazio
                 os.makedirs(diretorio, exist_ok=True)
     
+    def inicializar_arquivos_csv(self):
+        """
+        Inicializa os arquivos CSV com os cabeçalhos corretos se eles não existirem
+        ou estiverem vazios.
+        """
+        import os
+        
+        # Definir caminhos dos arquivos
+        arquivo_n = os.path.join(self.diretorio_resultados, 'resultados_variando_n.csv')
+        arquivo_W = os.path.join(self.diretorio_resultados, 'resultados_variando_W.csv')
+        
+        # Verificar e inicializar arquivo para variação de n
+        if not os.path.exists(arquivo_n) or os.path.getsize(arquivo_n) == 0:
+            print(f"Inicializando arquivo {arquivo_n}")
+            with open(arquivo_n, 'w') as f:
+                f.write("n,W,algoritmo,instancia,tempo,valor\n")
+        
+        # Verificar e inicializar arquivo para variação de W
+        if not os.path.exists(arquivo_W) or os.path.getsize(arquivo_W) == 0:
+            print(f"Inicializando arquivo {arquivo_W}")
+            with open(arquivo_W, 'w') as f:
+                f.write("W,n,algoritmo,instancia,tempo,valor\n")
+        
+        print("Arquivos CSV inicializados com sucesso.")
+
     def executar_algoritmo(self, algoritmo, arquivo_instancia, timeout=30):
         """Executa um algoritmo específico em uma instância e retorna o tempo e valor."""
         
@@ -217,40 +242,36 @@ class ExecutorExperimentos:
     
     def executar_variando_n(self, valores_n=[10, 20, 30, 40, 50], W=50, num_instancias=5):
         """Executa experimentos variando o número de itens."""
-        resultados = []
+        import os
+        import pandas as pd
         
-        # Para cada valor de n
+        resultados = []
+        algoritmos = ['run_dynamic_programming', 'run_backtracking', 'run_branch_and_bound']
+        
         for n in valores_n:
-            # Para cada instância
-            for instancia in range(1, num_instancias + 1):
-                # Constrói o caminho do arquivo de instância
-                arquivo_instancia = os.path.join(self.diretorio_instancias, 
-                                               f"instancia_n{n}_W{W}_{instancia}.txt")
+            print(f"Executando testes para n={n}, W={W}, {num_instancias} instâncias")
+            
+            # Gera instâncias para este valor de n
+            instancias_geradas = self.executar_gerador_instancias(num_instancias, n, W)
+            
+            if not instancias_geradas:
+                print(f"Não foi possível gerar instâncias para n={n}, W={W}. Pulando.")
+                continue
+            
+            # Procura pelas instâncias geradas
+            diretorio_instancias = os.path.join(self.diretorio_instancias, f"instancias_n{n}_W{W}")
+            arquivos_instancias = [
+                f for f in os.listdir(diretorio_instancias) 
+                if f.startswith("instancia_") and f.endswith(".txt")
+            ]
+            
+            for i, nome_arquivo in enumerate(arquivos_instancias[:num_instancias], 1):
+                instancia = i
+                arquivo_instancia = os.path.join(diretorio_instancias, nome_arquivo)
                 
-                # Verifica se o arquivo existe
-                if not os.path.exists(arquivo_instancia):
-                    print(f"Arquivo {arquivo_instancia} não encontrado, pulando...")
-                    continue
+                print(f"  Testando instância {instancia} ({arquivo_instancia})")
                 
-                # Define algoritmos a executar baseado no tamanho de n
-                algoritmos = ['run_dynamic_programming', 'run_branch_and_bound']
-                
-                # Determina limite seguro para backtracking
-                limite_seguro_backtracking = 100
-                if n <= limite_seguro_backtracking:
-                    algoritmos.append('run_backtracking')
-                else:
-                    print(f"  Pulando backtracking para n={n} (> {limite_seguro_backtracking})")
-                    resultados.append({
-                        'n': n,
-                        'W': W,
-                        'algoritmo': 'run_backtracking',
-                        'instancia': instancia,
-                        'tempo': None,
-                        'valor': None
-                    })
-                
-                # Executa cada algoritmo
+                # Testa cada algoritmo
                 for algoritmo in algoritmos:
                     tempo_execucao, valor = self.executar_algoritmo(algoritmo, arquivo_instancia)
                     
@@ -264,14 +285,27 @@ class ExecutorExperimentos:
                     })
         
         # Salva resultados em CSV
-        df_resultados = pd.DataFrame(resultados)
-        df_resultados.to_csv(os.path.join(self.diretorio_resultados, 'resultados_variando_n.csv'), 
-                           index=False)
-        
-        # Analisa e gera gráficos dos resultados
-        self.analisar_resultados(df_resultados, parametro_variavel='n')
-        
-        return df_resultados
+        if resultados:
+            df_resultados = pd.DataFrame(resultados)
+            arquivo_saida = os.path.join(self.diretorio_resultados, 'resultados_variando_n.csv')
+            
+            # Append to existing file if it exists and has header
+            if os.path.exists(arquivo_saida) and os.path.getsize(arquivo_saida) > 0:
+                df_existente = pd.read_csv(arquivo_saida)
+                df_combinado = pd.concat([df_existente, df_resultados], ignore_index=True)
+                df_combinado.to_csv(arquivo_saida, index=False)
+                print(f"Resultados adicionados ao arquivo existente: {arquivo_saida}")
+            else:
+                df_resultados.to_csv(arquivo_saida, index=False)
+                print(f"Resultados salvos em novo arquivo: {arquivo_saida}")
+            
+            # Analisa e gera gráficos dos resultados
+            self.analisar_resultados(df_resultados, parametro_variavel='n')
+            
+            return df_resultados
+        else:
+            print("Nenhum resultado obtido para variação de n.")
+            return pd.DataFrame()
     
     def executar_variando_W(self, valores_W=[20, 40, 60, 80, 100], n=30, num_instancias=5):
         """
@@ -285,32 +319,34 @@ class ExecutorExperimentos:
         Returns:
             DataFrame: DataFrame pandas com os resultados.
         """
-        # Similar ao executar_variando_n, mas variando W
+        import os
+        import pandas as pd
+        
         resultados = []
+        algoritmos = ['run_dynamic_programming', 'run_backtracking', 'run_branch_and_bound']
         
         for W in valores_W:
-            print(f"\nExecutando experimentos com n={n}, W={W}")
+            print(f"Executando testes para W={W}, n={n}, {num_instancias} instâncias")
             
-            # Verifica se o diretório de instâncias existe ou cria-o
-            nome_diretorio = os.path.join(self.diretorio_instancias, f"instancias_n{n}_W{W}")
-            if not os.path.exists(nome_diretorio):
-                os.makedirs(nome_diretorio, exist_ok=True)
-                # Executa gerador de instâncias
-                self.executar_gerador_instancias(num_instancias, n, W)
+            # Gera instâncias para este valor de W
+            instancias_geradas = self.executar_gerador_instancias(num_instancias, n, W)
             
-            # Executa cada instância
-            for instancia in range(1, num_instancias + 1):
-                arquivo_instancia = os.path.join(self.diretorio_instancias, 
-                                               f"instancias_n{n}_W{W}/instancia_{instancia}.txt")
+            if not instancias_geradas:
+                print(f"Não foi possível gerar instâncias para n={n}, W={W}. Pulando.")
+                continue
+            
+            # Procura pelas instâncias geradas
+            diretorio_instancias = os.path.join(self.diretorio_instancias, f"instancias_n{n}_W{W}")
+            arquivos_instancias = [
+                f for f in os.listdir(diretorio_instancias) 
+                if f.startswith("instancia_") and f.endswith(".txt")
+            ]
+            
+            for i, nome_arquivo in enumerate(arquivos_instancias[:num_instancias], 1):
+                instancia = i
+                arquivo_instancia = os.path.join(diretorio_instancias, nome_arquivo)
                 
-                if not os.path.exists(arquivo_instancia):
-                    print(f"Arquivo {arquivo_instancia} não encontrado, pulando...")
-                    continue
-                
-                # Para n grande, pular backtracking
-                algoritmos = ['run_dynamic_programming', 'run_branch_and_bound']
-                if n <= 100:
-                    algoritmos.append('run_backtracking')
+                print(f"  Testando instância {instancia} ({arquivo_instancia})")
                 
                 # Testa cada algoritmo
                 for algoritmo in algoritmos:
@@ -326,39 +362,74 @@ class ExecutorExperimentos:
                     })
         
         # Salva resultados em CSV
-        df_resultados = pd.DataFrame(resultados)
-        df_resultados.to_csv(os.path.join(self.diretorio_resultados, 'resultados_variando_W.csv'), 
-                           index=False)
-        
-        # Analisa e gera gráficos dos resultados
-        self.analisar_resultados(df_resultados, parametro_variavel='W')
-        
-        return df_resultados
+        if resultados:
+            df_resultados = pd.DataFrame(resultados)
+            arquivo_saida = os.path.join(self.diretorio_resultados, 'resultados_variando_W.csv')
+            
+            # Append to existing file if it exists and has header
+            if os.path.exists(arquivo_saida) and os.path.getsize(arquivo_saida) > 0:
+                df_existente = pd.read_csv(arquivo_saida)
+                df_combinado = pd.concat([df_existente, df_resultados], ignore_index=True)
+                df_combinado.to_csv(arquivo_saida, index=False)
+                print(f"Resultados adicionados ao arquivo existente: {arquivo_saida}")
+            else:
+                df_resultados.to_csv(arquivo_saida, index=False)
+                print(f"Resultados salvos em novo arquivo: {arquivo_saida}")
+            
+            # Analisa e gera gráficos dos resultados
+            self.analisar_resultados(df_resultados, parametro_variavel='W')
+            
+            return df_resultados
+        else:
+            print("Nenhum resultado obtido para variação de W.")
+            return pd.DataFrame()
     
     def analisar_resultados(self, df_resultados, parametro_variavel='n'):
         """
-        Analisa resultados e gera gráficos comparativos.
+        Analisa os resultados dos experimentos e gera gráficos.
         
         Args:
-            df_resultados (DataFrame): DataFrame com resultados dos experimentos.
-            parametro_variavel (str): Parâmetro variado no experimento ('n' ou 'W').
+            df_resultados: DataFrame com os resultados dos experimentos.
+            parametro_variavel: Parâmetro que foi variado nos experimentos ('n' ou 'W').
         """
+        print("\n===== ANÁLISE DE RESULTADOS =====")
+        
+        # Verificar se o DataFrame está vazio
         if df_resultados.empty:
-            print(f"Sem resultados para analisar (param={parametro_variavel})")
+            print("Nenhum resultado para analisar.")
             return
-            
-        # Extrai valores únicos do parâmetro e algoritmos
+        
+        # Garantir que os tipos de dados estejam corretos
+        df_resultados['tempo'] = pd.to_numeric(df_resultados['tempo'], errors='coerce')
+        df_resultados[parametro_variavel] = pd.to_numeric(df_resultados[parametro_variavel], errors='coerce')
+        
+        # Verificação para ver se há dados válidos após conversão
+        if df_resultados['tempo'].isna().all():
+            print("Erro: Nenhum tempo válido para análise após conversão de tipos")
+            return
+        
+        # Extrair algoritmos e valores do parâmetro variável
+        algoritmos = df_resultados['algoritmo'].unique()
         valores_parametro = sorted(df_resultados[parametro_variavel].unique())
-        algoritmos = sorted(df_resultados['algoritmo'].unique())
+        
+        print(f"\nAnalisando resultados variando {parametro_variavel}...")
+        print(f"Valores de {parametro_variavel}: {valores_parametro}")
+        print(f"Algoritmos: {algoritmos}")
         
         # Inicializa listas para tempos médios e intervalos de confiança
         tempos_medios = []
         intervalos_confianca = []
+        valores_maximos = []
+        
+        # Tabela para resumo dos resultados
+        tabela_resumo = []
+        cabecalho_resumo = ["Algoritmo", f"{parametro_variavel.upper()}", "Tempo Médio (s)", "IC 95%", "Valor Máximo"]
         
         # Calcula estatísticas para cada algoritmo
         for algoritmo in algoritmos:
             medias_algoritmo = []
             ic_algoritmo = []
+            valores_algoritmo = []
             
             for valor_param in valores_parametro:
                 # Filtra resultados para este algoritmo e valor do parâmetro
@@ -368,14 +439,17 @@ class ExecutorExperimentos:
                 if dados_filtrados.empty:
                     medias_algoritmo.append(np.nan)
                     ic_algoritmo.append(np.nan)
+                    valores_algoritmo.append(np.nan)
                     continue
                 
                 # Remove valores None/NaN
                 tempos = dados_filtrados['tempo'].dropna().values
+                valores = dados_filtrados['valor'].dropna().values if 'valor' in dados_filtrados.columns else np.array([0])
                 
                 if len(tempos) == 0:
                     medias_algoritmo.append(np.nan)
                     ic_algoritmo.append(np.nan)
+                    valores_algoritmo.append(np.nan)
                     continue
                     
                 # Calcula a média
@@ -384,21 +458,45 @@ class ExecutorExperimentos:
                 # Verifica se há amostras suficientes para intervalo de confiança
                 if len(tempos) <= 1:
                     medias_algoritmo.append(media)
-                    ic_algoritmo.append(0)  # Sem intervalo com uma única amostra
-                    continue
+                    ic_algoritmo.append(0)
+                else:
+                    # Calcula intervalo de confiança de 95%
+                    intervalo = 1.96 * np.std(tempos, ddof=1) / np.sqrt(len(tempos))
+                    medias_algoritmo.append(media)
+                    ic_algoritmo.append(intervalo)
                 
-                # Calcula o intervalo de confiança de 95%
-                ic = stats.t.interval(0.95, len(tempos)-1, loc=media, scale=stats.sem(tempos))
-                medias_algoritmo.append(media)
-                ic_algoritmo.append((ic[1] - ic[0]) / 2)
+                # Valor máximo médio
+                valor_medio = np.mean(valores) if len(valores) > 0 else np.nan
+                valores_algoritmo.append(valor_medio)
+                
+                # Adicionar à tabela de resumo
+                tabela_resumo.append([
+                    algoritmo.replace('run_', ''),
+                    valor_param,
+                    f"{media:.6f}",
+                    f"±{ic_algoritmo[-1]:.6f}" if not np.isnan(ic_algoritmo[-1]) else "N/A",
+                    f"{valor_medio:.1f}" if not np.isnan(valor_medio) else "N/A"
+                ])
             
             tempos_medios.append(medias_algoritmo)
             intervalos_confianca.append(ic_algoritmo)
+            valores_maximos.append(valores_algoritmo)
         
-        # Gera gráfico de tempo de execução
+        # Mostrar tabela de resumo
+        print("\nResumo dos Resultados:")
+        print("-" * 80)
+        print(f"{cabecalho_resumo[0]:<15} {cabecalho_resumo[1]:<10} {cabecalho_resumo[2]:<20} {cabecalho_resumo[3]:<15} {cabecalho_resumo[4]:<15}")
+        print("-" * 80)
+        for linha in tabela_resumo:
+            print(f"{linha[0]:<15} {linha[1]:<10} {linha[2]:<20} {linha[3]:<15} {linha[4]:<15}")
+        print("-" * 80)
+        
+        # Gerar gráfico de tempos
         plt.figure(figsize=(10, 6))
         for i, algoritmo in enumerate(algoritmos):
-            indices_validos = [j for j, x in enumerate(tempos_medios[i]) if not np.isnan(x)]
+            # Identificar índices de valores não-NaN
+            indices_validos = [j for j, val in enumerate(tempos_medios[i]) if not np.isnan(val)]
+            
             if not indices_validos:
                 continue
                 
@@ -406,52 +504,54 @@ class ExecutorExperimentos:
             y_valores = [tempos_medios[i][j] for j in indices_validos]
             erros = [intervalos_confianca[i][j] for j in indices_validos]
             
-            plt.errorbar(x_valores, y_valores, yerr=erros, 
-                         fmt='o-', label=algoritmo, capsize=5)
+            plt.errorbar(x_valores, y_valores, yerr=erros, fmt='o-', capsize=5, 
+                        linewidth=2, label=algoritmo.replace('run_', ''))
         
         plt.xlabel(f'Valor de {parametro_variavel}')
-        plt.ylabel('Tempo médio de execução (s)')
-        plt.title(f'Tempo médio de execução variando {parametro_variavel}')
+        plt.ylabel('Tempo médio (segundos)')
+        plt.title(f'Tempo de execução variando {parametro_variavel}')
         plt.legend()
         plt.grid(True)
+        
+        # Usar escala logarítmica se houver mais de um valor de parâmetro
         if len(valores_parametro) > 1:
             plt.xscale('log', base=2)
             plt.yscale('log')
+        
+        plt.tight_layout()
         plt.savefig(os.path.join(self.diretorio_graficos, f'tempo_vs_{parametro_variavel}.png'))
         plt.close()
         
-        # Gera gráfico de valores máximos
-        plt.figure(figsize=(10, 6))
-        for algoritmo in algoritmos:
-            valores_algoritmo = []
-            for valor_param in valores_parametro:
-                dados_filtrados = df_resultados[(df_resultados['algoritmo'] == algoritmo) & 
-                                            (df_resultados[parametro_variavel] == valor_param)]
+        # Gerar gráfico de valores máximos (se houver)
+        if 'valor' in df_resultados.columns:
+            plt.figure(figsize=(10, 6))
+            for i, algoritmo in enumerate(algoritmos):
+                # Identificar índices de valores não-NaN
+                indices_validos = [j for j, val in enumerate(valores_maximos[i]) if not np.isnan(val)]
                 
-                if dados_filtrados.empty or dados_filtrados['valor'].isna().all():
-                    valores_algoritmo.append(np.nan)
+                if not indices_validos:
                     continue
+                    
+                x_valores = [valores_parametro[j] for j in indices_validos]
+                y_valores = [valores_maximos[i][j] for j in indices_validos]
                 
-                valores_algoritmo.append(dados_filtrados['valor'].mean())
+                plt.plot(x_valores, y_valores, 'o-', linewidth=2, markersize=8, 
+                        label=algoritmo.replace('run_', ''))
             
-            indices_validos = [i for i, x in enumerate(valores_algoritmo) if not np.isnan(x)]
-            if not indices_validos:
-                continue
-                
-            x_valores = [valores_parametro[i] for i in indices_validos]
-            y_valores = [valores_algoritmo[i] for i in indices_validos]
+            plt.xlabel(f'Valor de {parametro_variavel}')
+            plt.ylabel('Valor máximo encontrado')
+            plt.title(f'Valor máximo encontrado variando {parametro_variavel}')
+            plt.legend()
+            plt.grid(True)
             
-            plt.plot(x_valores, y_valores, 'o-', label=algoritmo)
+            if len(valores_parametro) > 1:
+                plt.xscale('log', base=2)
+            
+            plt.tight_layout()
+            plt.savefig(os.path.join(self.diretorio_graficos, f'valor_vs_{parametro_variavel}.png'))
+            plt.close()
         
-        plt.xlabel(f'Valor de {parametro_variavel}')
-        plt.ylabel('Valor máximo encontrado')
-        plt.title(f'Valor máximo encontrado variando {parametro_variavel}')
-        plt.legend()
-        plt.grid(True)
-        if len(valores_parametro) > 1:
-            plt.xscale('log', base=2)
-        plt.savefig(os.path.join(self.diretorio_graficos, f'valor_vs_{parametro_variavel}.png'))
-        plt.close()
+        print(f"Análise concluída. Gráficos salvos em: {self.diretorio_graficos}")
     
     def gerar_graficos_comparativos(self, df_resultados):
         """Gera gráficos mais informativos para comparação dos algoritmos."""
@@ -523,41 +623,53 @@ class ExecutorExperimentos:
     
     def executar_gerador_instancias(self, num_instancias, n, W):
         """
-        Executa o gerador de instâncias para criar casos de teste.
+        Executa o gerador de instâncias e verifica se os arquivos foram criados corretamente.
         
         Args:
-            num_instancias (int): Número de instâncias a gerar.
-            n (int): Número de itens em cada instância.
-            W (int): Capacidade da mochila.
+            num_instancias: Número de instâncias a serem geradas
+            n: Número de itens
+            W: Capacidade da mochila
+        
+        Returns:
+            bool: True se as instâncias foram geradas com sucesso, False caso contrário
         """
-        # Cria diretório para instâncias desta configuração
-        nome_diretorio = os.path.join(self.diretorio_instancias, f"instancias_n{n}_W{W}")
-        os.makedirs(nome_diretorio, exist_ok=True)
+        import subprocess
+        import os
         
-        # Seleciona o executável conforme sistema operacional
-        if self.eh_windows:
-            gerador = os.path.join(self.diretorio_binarios, "generate_instances.exe")
-        else:
-            gerador = os.path.join(self.diretorio_binarios, "generate_instances")
+        # Verifica se o diretório de saída existe
+        diretorio_saida = os.path.join(self.diretorio_instancias, f"instancias_n{n}_W{W}")
+        os.makedirs(diretorio_saida, exist_ok=True)
         
-        # Define variáveis de ambiente para o gerador
-        env = os.environ.copy()
-        env["INSTANCES_DIR"] = self.diretorio_instancias
+        # Comando para executar o gerador de instâncias
+        comando = [os.path.join(self.diretorio_binarios, "generate_instances"), 
+                   str(num_instancias), str(n), str(W)]
         
-        # Executa o gerador de instâncias
         try:
-            resultado = subprocess.run(
-                [gerador, str(num_instancias), str(n), str(W)], 
-                capture_output=True, 
-                text=True, 
-                env=env
-            )
-            if resultado.returncode != 0:
-                print(f"  Erro ao gerar instâncias: {resultado.stderr}")
+            print(f"Executando: {' '.join(comando)}")
+            resultado = subprocess.run(comando, 
+                                      capture_output=True, 
+                                      text=True, 
+                                      check=True)
+            
+            # Verifica se os arquivos foram criados
+            arquivos_criados = [f for f in os.listdir(diretorio_saida) 
+                               if f.startswith("instancia_") and f.endswith(".txt")]
+            
+            if len(arquivos_criados) >= num_instancias:
+                print(f"Geradas {len(arquivos_criados)} instâncias em {diretorio_saida}")
+                return True
             else:
-                print(f"  Instâncias geradas com sucesso")
+                print(f"Aviso: Foram geradas apenas {len(arquivos_criados)} de {num_instancias} instâncias")
+                return len(arquivos_criados) > 0
+                
+        except subprocess.CalledProcessError as e:
+            print(f"Erro ao executar gerador de instâncias: {e}")
+            print(f"Saída: {e.stdout}")
+            print(f"Erro: {e.stderr}")
+            return False
         except Exception as e:
-            print(f"  Erro ao gerar instâncias: {str(e)}")
+            print(f"Erro inesperado ao gerar instâncias: {e}")
+            return False
     
     def realizar_teste_t_pareado(self, df_resultados):
         """Realiza teste t pareado entre algoritmos e apresenta de forma mais clara."""
@@ -667,6 +779,19 @@ class ExecutorExperimentos:
         import pandas as pd
         from tabulate import tabulate
         
+        # Check if the DataFrame is empty
+        if df_resultados.empty:
+            print("Warning: Empty DataFrame passed to gerar_resumo_resultados. Skipping summary generation.")
+            return
+        
+        # Check if required columns exist
+        required_columns = ['algoritmo', 'tempo']
+        missing_columns = [col for col in required_columns if col not in df_resultados.columns]
+        if missing_columns:
+            print(f"Warning: DataFrame is missing required columns: {missing_columns}. Available columns: {df_resultados.columns.tolist()}")
+            print("Skipping summary generation.")
+            return
+        
         # Criar diretório para relatórios se não existir
         os.makedirs(os.path.join(self.diretorio_resultados, 'relatorios'), exist_ok=True)
         
@@ -754,106 +879,154 @@ class ExecutorExperimentos:
         import pandas as pd
         import matplotlib.pyplot as plt
         import seaborn as sns
-        import numpy as np
         
-        print("\nGerando visualizações avançadas...")
+        print("Gerando visualizações avançadas...")
         
-        # Carregar dados
-        df_n_path = os.path.join(self.diretorio_resultados, "resultados_variando_n.csv")
-        df_W_path = os.path.join(self.diretorio_resultados, "resultados_variando_W.csv")
-        
-        if not os.path.exists(df_n_path) or not os.path.exists(df_W_path):
-            print("Arquivos de resultados não encontrados. Execute os experimentos primeiro.")
-            return
+        # Leitura segura dos arquivos de resultados
+        try:
+            # Verificar existência dos arquivos
+            arquivo_resultados_n = os.path.join(self.diretorio_resultados, 'resultados_variando_n.csv')
+            arquivo_resultados_W = os.path.join(self.diretorio_resultados, 'resultados_variando_W.csv')
             
-        df_n = pd.read_csv(df_n_path)
-        df_W = pd.read_csv(df_W_path)
-        
-        # Configuração de estilo
-        plt.style.use('seaborn-v0_8-whitegrid')
-        sns.set_palette("colorblind")
-        
-        # 1. Gráfico de tempo médio por algoritmo e tamanho n
-        plt.figure(figsize=(10, 6))
-        sns.lineplot(data=df_n, x="n", y="tempo", hue="algoritmo", marker="o", err_style="bars")
-        plt.title("Tempo de Execução por Tamanho da Entrada (n)")
-        plt.xlabel("Número de Itens (n)")
-        plt.ylabel("Tempo (s)")
-        plt.yscale("log")
-        plt.grid(True, alpha=0.3)
-        plt.savefig(os.path.join(self.diretorio_graficos, "tempo_vs_n_avancado.png"), dpi=300)
-        plt.close()
-        
-        # 2. Gráfico de tempo médio por algoritmo e capacidade W
-        plt.figure(figsize=(10, 6))
-        sns.lineplot(data=df_W, x="W", y="tempo", hue="algoritmo", marker="o", err_style="bars")
-        plt.title("Tempo de Execução vs. Capacidade da Mochila (W)", fontsize=14)
-        plt.xlabel("Capacidade (W)")
-        plt.ylabel("Tempo (s)")
-        plt.yscale("log")
-        plt.grid(True, alpha=0.3)
-        plt.savefig(os.path.join(self.diretorio_graficos, "tempo_vs_W_avancado.png"), dpi=300)
-        plt.close()
-        
-        # 3. Heatmap para comparação de algoritmos
-        pivot_data = df_n.pivot_table(
-            index="n", 
-            columns="algoritmo", 
-            values="tempo", 
-            aggfunc="mean"
-        )
-        
-        plt.figure(figsize=(12, 8))
-        sns.heatmap(pivot_data, annot=True, fmt=".5f", cmap="YlGnBu")
-        plt.title("Comparativo de Tempo de Execução por Tamanho do Problema", fontsize=14)
-        plt.tight_layout()
-        plt.savefig(os.path.join(self.diretorio_graficos, "heatmap_comparativo.png"), dpi=300)
-        plt.close()
-        
-        print(f"Visualizações avançadas geradas com sucesso em: {self.diretorio_graficos}")
+            df_n = None
+            df_W = None
+            
+            # Carregar arquivo de resultados para n
+            if os.path.exists(arquivo_resultados_n) and os.path.getsize(arquivo_resultados_n) > 0:
+                try:
+                    df_n = pd.read_csv(arquivo_resultados_n)
+                    if df_n.empty or 'algoritmo' not in df_n.columns:
+                        print(f"Arquivo {arquivo_resultados_n} existe mas não contém dados válidos.")
+                        df_n = None
+                except Exception as e:
+                    print(f"Erro ao ler {arquivo_resultados_n}: {e}")
+                    df_n = None
+            
+            # Carregar arquivo de resultados para W
+            if os.path.exists(arquivo_resultados_W) and os.path.getsize(arquivo_resultados_W) > 0:
+                try:
+                    df_W = pd.read_csv(arquivo_resultados_W)
+                    if df_W.empty or 'algoritmo' not in df_W.columns:
+                        print(f"Arquivo {arquivo_resultados_W} existe mas não contém dados válidos.")
+                        df_W = None
+                except Exception as e:
+                    print(f"Erro ao ler {arquivo_resultados_W}: {e}")
+                    df_W = None
+            
+            # Verificar se há dados para processar
+            if df_n is None and df_W is None:
+                print("Nenhum dado válido para gerar visualizações avançadas.")
+                return
+            
+            # Combinar os dados disponíveis
+            df_combined = pd.concat([df for df in [df_n, df_W] if df is not None], ignore_index=True)
+            
+            if df_combined.empty or 'algoritmo' not in df_combined.columns:
+                print("Dados combinados insuficientes para gerar visualizações.")
+                return
+            
+            # Resto do código para gerar visualizações com df_combined
+            # ...
+            
+            # Por exemplo, gerar heatmap se houver dados suficientes:
+            if 'algoritmo' in df_combined.columns and 'n' in df_combined.columns and 'tempo' in df_combined.columns:
+                pivot_data = pd.pivot_table(
+                    df_combined,
+                    index="algoritmo",
+                    columns="n",
+                    values="tempo", 
+                    aggfunc="mean"
+                )
+                
+                plt.figure(figsize=(12, 8))
+                sns.heatmap(pivot_data, annot=True, fmt=".5f", cmap="YlGnBu")
+                plt.title("Comparativo de Tempo de Execução por Tamanho do Problema", fontsize=14)
+                plt.tight_layout()
+                plt.savefig(os.path.join(self.diretorio_graficos, "heatmap_comparativo.png"), dpi=300)
+                plt.close()
+                
+                print(f"Visualizações avançadas geradas com sucesso em: {self.diretorio_graficos}")
+            else:
+                print("Dados insuficientes para gerar o heatmap comparativo.")
+                
+        except Exception as e:
+            print(f"Erro ao gerar visualizações avançadas: {e}")
 
 def main():
     """Função principal para coordenar a execução dos experimentos."""
+    import os
+    import pandas as pd
+    
     executor = ExecutorExperimentos()
+    
+    # Inicializar arquivos CSV antes de começar
+    executor.inicializar_arquivos_csv()
     
     # Verifica se existem resultados salvos
     arquivo_resultados_n = os.path.join(executor.diretorio_resultados, 'resultados_variando_n.csv')
     arquivo_resultados_W = os.path.join(executor.diretorio_resultados, 'resultados_variando_W.csv')
     
+    df_resultados_n = None
+    df_resultados_W = None
+    
     # Experimentos variando n
-    if os.path.exists(arquivo_resultados_n):
-        print(f"Carregando resultados existentes de {arquivo_resultados_n}")
-        df_resultados_n = pd.read_csv(arquivo_resultados_n)
-    else:
-        print("Executando experimentos variando n")
-        df_resultados_n = executor.executar_variando_n()
+    try:
+        if os.path.exists(arquivo_resultados_n) and os.path.getsize(arquivo_resultados_n) > 0:
+            print(f"Carregando resultados existentes de {arquivo_resultados_n}")
+            df_resultados_n = pd.read_csv(arquivo_resultados_n)
+            
+            # Verify data integrity
+            if df_resultados_n.empty or 'algoritmo' not in df_resultados_n.columns:
+                print(f"Arquivo {arquivo_resultados_n} existe mas tem dados inválidos. Executando novos experimentos.")
+                df_resultados_n = executor.executar_variando_n()
+            else:
+                print(f"Dados carregados com sucesso: {len(df_resultados_n)} registros.")
+        else:
+            print("Executando experimentos variando n")
+            df_resultados_n = executor.executar_variando_n()
+    except Exception as e:
+        print(f"Erro ao processar experimentos variando n: {e}")
+        print("Continuando com os outros experimentos...")
     
     # Experimentos variando W
-    if os.path.exists(arquivo_resultados_W):
-        print(f"Carregando resultados existentes de {arquivo_resultados_W}")
-        df_resultados_W = pd.read_csv(arquivo_resultados_W)
-    else:
-        print("Executando experimentos variando W")
-        df_resultados_W = executor.executar_variando_W()
+    try:
+        if os.path.exists(arquivo_resultados_W) and os.path.getsize(arquivo_resultados_W) > 0:
+            print(f"Carregando resultados existentes de {arquivo_resultados_W}")
+            df_resultados_W = pd.read_csv(arquivo_resultados_W)
+            
+            # Verify data integrity
+            if df_resultados_W.empty or 'algoritmo' not in df_resultados_W.columns:
+                print(f"Arquivo {arquivo_resultados_W} existe mas tem dados inválidos. Executando novos experimentos.")
+                df_resultados_W = executor.executar_variando_W()
+            else:
+                print(f"Dados carregados com sucesso: {len(df_resultados_W)} registros.")
+        else:
+            print("Executando experimentos variando W")
+            df_resultados_W = executor.executar_variando_W()
+    except Exception as e:
+        print(f"Erro ao processar experimentos variando W: {e}")
     
-    # Gera gráficos a partir dos resultados
-    executor.analisar_resultados(df_resultados_n, parametro_variavel='n')
-    executor.analisar_resultados(df_resultados_W, parametro_variavel='W')
-    
-    # Realiza análise estatística para comparar algoritmos
-    print("\n===== Análise Estatística: Comparação entre Algoritmos =====")
-    print("\nResultados para experimentos variando n:")
-    executor.realizar_teste_t_pareado(df_resultados_n)
-    
-    print("\nResultados para experimentos variando W:")
-    executor.realizar_teste_t_pareado(df_resultados_W)
-    
-    # Gera resumos dos resultados
-    executor.gerar_resumo_resultados(df_resultados_n)
-    executor.gerar_resumo_resultados(df_resultados_W)
-    
-    # Gera visualizações avançadas
-    executor.gerar_visualizacoes_avancadas()
+    # Análise de resultados combinados (se ambos existirem)
+    if df_resultados_n is not None and df_resultados_W is not None:
+        # Gere análise estatística combinada
+        print("\n===== Análise Estatística: Comparação entre Algoritmos =====\n")
+        
+        print("Resultados para experimentos variando n:")
+        executor.realizar_teste_t_pareado(df_resultados_n)
+        
+        print("\nResultados para experimentos variando W:")
+        executor.realizar_teste_t_pareado(df_resultados_W)
+        
+        # Gere resumos dos resultados
+        if not df_resultados_n.empty:
+            executor.gerar_resumo_resultados(df_resultados_n)
+        
+        if not df_resultados_W.empty and 'algoritmo' in df_resultados_W.columns:
+            executor.gerar_resumo_resultados(df_resultados_W)
+        
+        # Gere visualizações avançadas
+        print("Gerando visualizações avançadas...")
+        executor.gerar_visualizacoes_avancadas()
     
     print("\nExperimentos concluídos e resultados analisados!")
     print(f"Gráficos salvos em: {executor.diretorio_graficos}")

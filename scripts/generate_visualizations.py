@@ -1,137 +1,244 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 import os
 import sys
+import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from pathlib import Path
 
-# Adicionar diretório raiz ao path para importar config.py
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from python.config import RESULTS_DIR, GRAPHS_DIR
+# Importar configuração
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import RESULTS_DIR, GRAPHS_DIR
 
-# Configuração de estilo
-plt.style.use('seaborn-v0_8-whitegrid')
-sns.set_palette("colorblind")
-
-# Garantir que o diretório de gráficos exista
+# Assegurar que o diretório de gráficos existe
 os.makedirs(GRAPHS_DIR, exist_ok=True)
 
-# Carregar dados com parse dates=False para garantir que tempo seja lido corretamente
-print("Carregando dados...")
-df_n = pd.read_csv(os.path.join(RESULTS_DIR, "resultados_variando_n.csv"))
-df_W = pd.read_csv(os.path.join(RESULTS_DIR, "resultados_variando_W.csv"))
+def verificar_arquivo_csv(arquivo):
+    """Verifica se o arquivo CSV existe e não está vazio."""
+    if not os.path.exists(arquivo):
+        print(f"Arquivo não encontrado: {arquivo}")
+        return False
+    
+    if os.path.getsize(arquivo) == 0:
+        print(f"Arquivo vazio: {arquivo}")
+        return False
+    
+    return True
 
-# Garantir que as colunas numéricas sejam do tipo correto
-print("Processando dados...")
-try:
-    # Converter tempo para float - se for string com valores concatenados, 
-    # pegamos apenas o primeiro valor
-    for df in [df_n, df_W]:
-        # Verificar se tempo já é numérico
+def limpar_e_converter_dados(df):
+    """Limpa e converte os dados para os tipos corretos."""
+    if df is None or df.empty:
+        return df
+    
+    # Fazer uma cópia para evitar SettingWithCopyWarning
+    df = df.copy()
+    
+    # Converter tempo para float
+    if 'tempo' in df.columns:
         if df['tempo'].dtype == object:
-            # Se for string, tenta extrair o primeiro número
-            df['tempo'] = df['tempo'].astype(str).str.extract(r'(\d+\.\d+)').astype(float)
-        
-        # Garantir que outras colunas também sejam numéricas
-        df['n'] = pd.to_numeric(df['n'], errors='coerce')
-        df['W'] = pd.to_numeric(df['W'], errors='coerce')
-        df['valor'] = pd.to_numeric(df['valor'], errors='coerce')
+            # Extrair valores numéricos de strings como "0.123456 segundos"
+            df['tempo'] = df['tempo'].astype(str).str.extract(r'(\d+\.?\d*)').astype(float)
+        else:
+            df['tempo'] = pd.to_numeric(df['tempo'], errors='coerce')
     
-    print(f"Dados processados. Formato tempo: {df_n['tempo'].dtype}")
-except Exception as e:
-    print(f"Erro ao processar dados: {e}")
-    # Exibir algumas linhas para debug
-    print("Exemplo de valores na coluna tempo:")
-    print(df_n['tempo'].head())
-
-# 1. Gráfico de tempo médio por algoritmo e tamanho n
-plt.figure(figsize=(10, 6))
-sns.lineplot(data=df_n, x="n", y="tempo", hue="algoritmo", marker="o", err_style="bars")
-plt.title("Tempo de Execução por Tamanho da Entrada (n)")
-plt.xlabel("Número de Itens (n)")
-plt.ylabel("Tempo (s)")
-plt.yscale("log")
-plt.grid(True, alpha=0.3)
-plt.savefig(os.path.join(GRAPHS_DIR, "tempo_vs_n.png"), dpi=300)
-plt.close()
-
-# 2. Gráfico de tempo médio por algoritmo e capacidade W
-plt.figure(figsize=(10, 6))
-sns.lineplot(data=df_W, x="W", y="tempo", hue="algoritmo", marker="o", err_style="bars")
-plt.title("Tempo de Execução vs. Capacidade da Mochila (W)", fontsize=14)
-plt.xlabel("Capacidade da Mochila (W)", fontsize=12)
-plt.ylabel("Tempo Médio (segundos)", fontsize=12)
-plt.yscale("log")
-plt.tight_layout()
-plt.savefig(os.path.join(GRAPHS_DIR, "tempo_vs_W.png"), dpi=300)
-plt.close()
-
-# 3. Boxplot para mostrar variabilidade dos algoritmos
-plt.figure(figsize=(10, 6))
-algorithm_names = {
-    'run_dynamic_programming': 'Programação Dinâmica',
-    'run_branch_and_bound': 'Branch and Bound',
-    'run_backtracking': 'Backtracking'
-}
-
-# Filter out any rows where algoritmo is 'algoritmo' (header row) or NaN
-df_n = df_n[df_n['algoritmo'].notna() & (df_n['algoritmo'] != 'algoritmo')]
-df_n = df_n.dropna(subset=['tempo'])
-
-# Apply mapping to create a new column with readable algorithm names
-df_n.loc[:, 'algoritmo_nome'] = df_n['algoritmo'].map(algorithm_names)
-
-# Check if any values weren't mapped correctly and fix them
-if df_n['algoritmo_nome'].isnull().any():
-    print("AVISO: Alguns algoritmos não foram mapeados corretamente!")
-    df_n.loc[df_n['algoritmo_nome'].isnull(), 'algoritmo_nome'] = df_n.loc[df_n['algoritmo_nome'].isnull(), 'algoritmo']
-
-# Add debugging to see what values we have and ensure mapping works
-print("Valores únicos na coluna 'algoritmo':", df_n['algoritmo'].unique())
-print("Valores únicos após mapeamento:", df_n['algoritmo_nome'].unique())
-
-# Create boxplot safely using catplot instead of direct boxplot
-sns.catplot(
-    data=df_n, 
-    x="algoritmo_nome", 
-    y="tempo", 
-    kind="box",
-    height=6,
-    aspect=1.5
-)
-plt.title("Variabilidade no Tempo de Execução por Algoritmo", fontsize=14)
-plt.xlabel("Algoritmo", fontsize=12)
-plt.ylabel("Tempo (segundos)", fontsize=12)
-plt.tight_layout()
-plt.savefig(os.path.join(GRAPHS_DIR, "variabilidade_algoritmos.png"), dpi=300)
-plt.close()
-
-# Apply the same filtering and mapping to df_W
-df_W = df_W[df_W['algoritmo'].notna() & (df_W['algoritmo'] != 'algoritmo')]
-df_W = df_W.dropna(subset=['tempo'])
-df_W.loc[:, 'algoritmo_nome'] = df_W['algoritmo'].map(algorithm_names)
-
-# 4. Heatmap de comparação de desempenho para diferentes valores de n e W
-try:
-    # Agregação explícita para evitar problemas de tipo
-    print("Criando pivot table...")
-    # Primeiro agrupa e calcula a média para garantir valores numéricos
-    agg_data = df_n.groupby(['n', 'algoritmo'])['tempo'].mean().reset_index()
+    # Converter outras colunas numéricas
+    for col in ['n', 'W', 'valor']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
     
-    # Depois cria o pivot com os dados já agregados
-    pivot_data = agg_data.pivot(
-        index="n", 
-        columns="algoritmo", 
-        values="tempo"
-    )
+    # Remover linhas com NaN
+    df = df.dropna(subset=['tempo'])
+    
+    # Converter nomes de algoritmos para um formato mais legível
+    if 'algoritmo' in df.columns:
+        df['algoritmo'] = df['algoritmo'].str.replace('run_', '').str.replace('_', ' ').str.title()
+    
+    return df
+
+def gerar_graficos_tempo(df, parametro_variavel):
+    """Gera gráficos de tempo de execução."""
+    if df is None or df.empty:
+        return
     
     plt.figure(figsize=(12, 8))
-    sns.heatmap(pivot_data, annot=True, fmt=".5f", cmap="YlGnBu")
-    plt.title("Comparativo de Tempo de Execução por Tamanho do Problema", fontsize=14)
+    
+    # Configurar estilo
+    sns.set_style("whitegrid")
+    plt.rcParams['font.size'] = 12
+    
+    # Agrupar dados
+    agrupado = df.groupby([parametro_variavel, 'algoritmo'])['tempo'].agg(['mean', 'std']).reset_index()
+    
+    # Plotar para cada algoritmo
+    for algoritmo in agrupado['algoritmo'].unique():
+        dados_alg = agrupado[agrupado['algoritmo'] == algoritmo]
+        
+        x = dados_alg[parametro_variavel]
+        y = dados_alg['mean']
+        erro = dados_alg['std']
+        
+        plt.errorbar(x, y, yerr=erro, fmt='o-', linewidth=2, capsize=5, label=algoritmo)
+    
+    # Configurar gráfico
+    plt.xlabel(f'{parametro_variavel.upper()}', fontsize=14)
+    plt.ylabel('Tempo de execução (s)', fontsize=14)
+    plt.title(f'Tempo de execução vs {parametro_variavel.upper()}', fontsize=16)
+    
+    if len(agrupado[parametro_variavel].unique()) > 1:
+        plt.xscale('log', base=2)
+    
+    plt.yscale('log')
+    plt.grid(True, which="both", ls="--", alpha=0.7)
+    plt.legend(fontsize=12)
+    
+    # Salvar figura
     plt.tight_layout()
-    plt.savefig(os.path.join(GRAPHS_DIR, "heatmap_comparativo.png"), dpi=300)
+    plt.savefig(os.path.join(GRAPHS_DIR, f'tempo_vs_{parametro_variavel}.png'), dpi=300)
     plt.close()
-except Exception as e:
-    print(f"Erro ao gerar heatmap: {e}")
 
-print(f"Visualizações geradas com sucesso! Gráficos salvos em: {GRAPHS_DIR}")
+def gerar_graficos_valor(df, parametro_variavel):
+    """Gera gráficos de valor máximo encontrado."""
+    if df is None or df.empty or 'valor' not in df.columns:
+        return
+    
+    plt.figure(figsize=(12, 8))
+    
+    # Configurar estilo
+    sns.set_style("whitegrid")
+    plt.rcParams['font.size'] = 12
+    
+    # Agrupar dados
+    agrupado = df.groupby([parametro_variavel, 'algoritmo'])['valor'].agg(['mean']).reset_index()
+    
+    # Plotar para cada algoritmo
+    for algoritmo in agrupado['algoritmo'].unique():
+        dados_alg = agrupado[agrupado['algoritmo'] == algoritmo]
+        
+        x = dados_alg[parametro_variavel]
+        y = dados_alg['mean']
+        
+        plt.plot(x, y, 'o-', linewidth=2, markersize=8, label=algoritmo)
+    
+    # Configurar gráfico
+    plt.xlabel(f'{parametro_variavel.upper()}', fontsize=14)
+    plt.ylabel('Valor máximo encontrado', fontsize=14)
+    plt.title(f'Valor máximo vs {parametro_variavel.upper()}', fontsize=16)
+    
+    if len(agrupado[parametro_variavel].unique()) > 1:
+        plt.xscale('log', base=2)
+    
+    plt.grid(True, which="both", ls="--", alpha=0.7)
+    plt.legend(fontsize=12)
+    
+    # Salvar figura
+    plt.tight_layout()
+    plt.savefig(os.path.join(GRAPHS_DIR, f'valor_vs_{parametro_variavel}.png'), dpi=300)
+    plt.close()
+
+def gerar_grafico_barras_comparativo(df):
+    """Gera um gráfico de barras comparando os algoritmos."""
+    if df is None or df.empty:
+        return
+    
+    plt.figure(figsize=(14, 10))
+    
+    # Configurar estilo
+    sns.set_style("whitegrid")
+    plt.rcParams['font.size'] = 12
+    
+    # Criar visualização com base nos parâmetros disponíveis
+    if 'n' in df.columns and 'W' in df.columns:
+        # Agrupar por n, W e algoritmo
+        parametros = df[['n', 'W']].drop_duplicates().sort_values(['n', 'W'])
+        
+        # Limitar a 5 combinações para legibilidade
+        if len(parametros) > 5:
+            parametros = parametros.iloc[:5]
+        
+        # Preparar dados para o gráfico
+        dados_plot = []
+        
+        for _, row in parametros.iterrows():
+            n_val, w_val = row['n'], row['W']
+            df_filtrado = df[(df['n'] == n_val) & (df['W'] == w_val)]
+            
+            for alg in df_filtrado['algoritmo'].unique():
+                tempo_medio = df_filtrado[df_filtrado['algoritmo'] == alg]['tempo'].mean()
+                dados_plot.append({
+                    'n': n_val, 
+                    'W': w_val, 
+                    'algoritmo': alg,
+                    'tempo': tempo_medio
+                })
+        
+        df_plot = pd.DataFrame(dados_plot)
+        
+        # Criar rótulos para o eixo x
+        df_plot['parametros'] = df_plot.apply(lambda x: f"n={int(x['n'])}, W={int(x['W'])}", axis=1)
+        
+        # Plotar gráfico
+        sns.barplot(x='parametros', y='tempo', hue='algoritmo', data=df_plot)
+        
+        plt.title('Comparação de Tempo por Combinação de Parâmetros', fontsize=16)
+        plt.xlabel('Parâmetros (n, W)', fontsize=14)
+        plt.ylabel('Tempo médio (s)', fontsize=14)
+        plt.yscale('log')
+        plt.xticks(rotation=45)
+        plt.legend(title='Algoritmo')
+        plt.grid(True, which="both", ls="--", alpha=0.5)
+        
+        # Salvar figura
+        plt.tight_layout()
+        plt.savefig(os.path.join(GRAPHS_DIR, 'comparacao_parametros.png'), dpi=300)
+        plt.close()
+
+# Carregar e processar dados
+print("Iniciando geração de visualizações...")
+
+# Inicializando DataFrames
+df_n = None
+df_W = None
+
+# Verificar e carregar resultados de variação de n
+arquivo_n = os.path.join(RESULTS_DIR, "resultados_variando_n.csv")
+if verificar_arquivo_csv(arquivo_n):
+    try:
+        df_n = pd.read_csv(arquivo_n)
+        df_n = limpar_e_converter_dados(df_n)
+        print(f"Dados de variação de n carregados: {len(df_n)} registros")
+    except Exception as e:
+        print(f"Erro ao processar {arquivo_n}: {e}")
+
+# Verificar e carregar resultados de variação de W
+arquivo_W = os.path.join(RESULTS_DIR, "resultados_variando_W.csv")
+if verificar_arquivo_csv(arquivo_W):
+    try:
+        df_W = pd.read_csv(arquivo_W)
+        df_W = limpar_e_converter_dados(df_W)
+        print(f"Dados de variação de W carregados: {len(df_W)} registros")
+    except Exception as e:
+        print(f"Erro ao processar {arquivo_W}: {e}")
+
+# Verificar se algum dos DataFrames foi carregado com sucesso
+if (df_n is None or df_n.empty) and (df_W is None or df_W.empty):
+    print("Nenhum dado válido para gerar visualizações.")
+    sys.exit(1)
+
+print("Gerando visualizações...")
+
+# Visualizações para variação de n
+if df_n is not None and not df_n.empty:
+    gerar_graficos_tempo(df_n, 'n')
+    gerar_graficos_valor(df_n, 'n')
+
+# Visualizações para variação de W
+if df_W is not None and not df_W.empty:
+    gerar_graficos_tempo(df_W, 'W')
+    gerar_graficos_valor(df_W, 'W')
+
+# Visualização comparativa combinando dados
+df_combinado = pd.concat([df_n, df_W]) if df_n is not None and df_W is not None else (df_n if df_n is not None else df_W)
+if df_combinado is not None and not df_combinado.empty:
+    gerar_grafico_barras_comparativo(df_combinado)
+
+print(f"Visualizações geradas com sucesso. Arquivos salvos em: {GRAPHS_DIR}")

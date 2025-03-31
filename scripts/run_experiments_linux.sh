@@ -37,7 +37,6 @@ DIRETORIO_BINARIOS="${PROJETO_RAIZ}/build/bin"  # Changed from /bin to /build/bi
 DIRETORIO_INSTANCIAS="${PROJETO_RAIZ}/output/instances"
 DIRETORIO_RESULTADOS="${PROJETO_RAIZ}/output/results"
 DIRETORIO_GRAFICOS="${PROJETO_RAIZ}/output/graphs"
-DIRETORIO_PLOTS="${PROJETO_RAIZ}/output/plots"
 
 # Criar diretórios se não existirem
 mkdir -p "${DIRETORIO_BUILD}"
@@ -45,7 +44,6 @@ mkdir -p "${DIRETORIO_BINARIOS}"
 mkdir -p "${DIRETORIO_INSTANCIAS}"
 mkdir -p "${DIRETORIO_RESULTADOS}"
 mkdir -p "${DIRETORIO_GRAFICOS}"
-mkdir -p "${DIRETORIO_PLOTS}"
 
 echo "===== Compilando o projeto usando CMake ====="
 # Mudar para o diretório de build e compilar
@@ -93,6 +91,5 @@ python3 generate_visualizations.py
 echo "===== Processo completo! ====="
 echo "Os resultados dos experimentos estão disponíveis em:"
 echo "- Arquivos CSV: ${DIRETORIO_RESULTADOS}"
-echo "- Gráficos básicos: ${DIRETORIO_GRAFICOS}"
-echo "- Visualizações adicionais: ${DIRETORIO_PLOTS}"
+echo "- Gráficos: ${DIRETORIO_GRAFICOS}"
 echo ""

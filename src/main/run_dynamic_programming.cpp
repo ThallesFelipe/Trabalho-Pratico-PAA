@@ -113,13 +113,39 @@ int main(int argc, char *argv[])
             output_path = ".";
         }
 
-        // Usar path com separador de diretório correto
-        std::ofstream output_file(output_path + "/results.txt");
+        // Corrigir o caminho de saída para lidar com WSL vs Windows
+        std::string separator = "/";
+        #ifdef _WIN32
+            separator = "\\";
+        #endif
+
+        // Nome do arquivo baseado no algoritmo para evitar sobreescrita
+        std::string output_filename = "dynamic_programming_results.csv";
+        std::string output_file_path = output_path + separator + output_filename;
+        
+        std::ofstream output_file(output_file_path);
         if (output_file.is_open()) {
-            output_file << "Algoritmo: Programação Dinâmica" << std::endl;
-            output_file << "Valor máximo: " << valor_maximo << std::endl;
-            output_file << "Tempo de execução: " << std::fixed << std::setprecision(6) << duracao.count() << " segundos" << std::endl;
+            // Formato CSV consistente para facilitar a análise posterior
+            output_file << "algoritmo,dynamic_programming" << std::endl;
+            output_file << "valor," << valor_maximo << std::endl;
+            output_file << "tempo," << std::fixed << std::setprecision(6) << duracao.count() << std::endl;
+            output_file << "n," << pesos.size() << std::endl;
+            output_file << "W," << capacidade << std::endl;
+            
+            output_file << "itens,";
+            for (size_t i = 0; i < itens_selecionados.size(); ++i) {
+                output_file << itens_selecionados[i] + 1;
+                if (i < itens_selecionados.size() - 1) {
+                    output_file << ";";
+                }
+            }
+            output_file << std::endl;
+            
             output_file.close();
+            std::cout << "Resultados salvos em: " << output_file_path << std::endl;
+        } else {
+            std::cerr << "Erro ao abrir arquivo para escrita de resultados: " << output_file_path << std::endl;
+            return 1;
         }
 
         return 0;

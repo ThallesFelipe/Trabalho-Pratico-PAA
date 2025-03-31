@@ -56,20 +56,28 @@ fi
 
 # 5. Generate a test instance to verify everything works
 echo "Generating test instance..."
+cd "${PROJETO_RAIZ}"  # Certifique-se de estar no diretório raiz
 "${DIRETORIO_BINARIOS}/generate_instances" 1 10 10
+
+# Verifique onde a instância foi realmente gerada
+echo "Verificando onde a instância foi gerada:"
+find "${PROJETO_RAIZ}" -name "instancia_1.txt" -type f
 
 # 6. Run a simple test on all algorithms
 echo "Testing algorithms on the generated instance..."
-for algorithm in run_dynamic_programming run_backtracking run_branch_and_bound; do
-    test_file=$(find "${DIRETORIO_INSTANCIAS}" -name "*.txt" | head -n 1)
-    if [ -n "$test_file" ]; then
+# Encontre o arquivo de instância real
+test_file=$(find "${PROJETO_RAIZ}" -name "instancia_1.txt" -type f | head -n 1)
+
+if [ -n "$test_file" ]; then
+    echo "Found test file at: $test_file"
+    for algorithm in run_dynamic_programming run_backtracking run_branch_and_bound; do
         echo "Testing $algorithm on $test_file"
         "${DIRETORIO_BINARIOS}/$algorithm" "$test_file"
-    else
-        echo "No test file found!"
-        exit 1
-    fi
-done
+    done
+else
+    echo "No test file found in the project directory!"
+    exit 1
+fi
 
 # 7. Generate initial experiment data files
 echo "Generating initial experiment data files..."
