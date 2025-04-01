@@ -76,6 +76,13 @@ void backtrack(int indice, int peso_atual, int valor_atual, const std::vector<It
               selecao_atual, valor_maximo, melhor_selecao, valor_restante - itens[indice].valor);
 }
 
+bool pode_alcancar_melhor_valor(int valor_atual, int valor_restante, int valor_maximo) {
+    // Verificação rápida antes de fazer cálculos mais intensivos
+    if (valor_atual + valor_restante <= valor_maximo) 
+        return false;
+    return true;
+}
+
 /**
  * @brief Implementação otimizada do algoritmo de backtracking usando vetores de bits.
  *
@@ -94,8 +101,8 @@ void backtrack_otimizado(int indice, int peso_atual, int valor_atual,
                      std::vector<bool> &selecao_atual, int &valor_maximo,
                      std::vector<bool> &melhor_selecao, int valor_restante)
 {
-    // Poda: se o valor atual + valor remanescente não superar o melhor valor encontrado
-    if (valor_atual + valor_restante <= valor_maximo)
+    // Otimização: verificação rápida antes de fazer outras operações
+    if (!pode_alcancar_melhor_valor(valor_atual, valor_restante, valor_maximo))
         return;
 
     // Poda: se ultrapassar a capacidade

@@ -26,21 +26,22 @@ def main():
     print("ANÁLISE EXPERIMENTAL DE ALGORITMOS PARA O PROBLEMA DA MOCHILA")
     print("="*80)
     
-    # Inicializar executor
-    executor = ExecutorExperimentos()
-    
-    # Inicializar arquivos CSV
-    executor.inicializar_arquivos_csv()
-    
     # Configurações
     config = {
         'valores_n': [10, 20, 30, 40, 50],          # Valores de n
         'valores_W': [50, 100, 150, 200, 250],      # Valores de W
         'num_instancias': 5,                        # Instâncias por configuração
-        'timeout_algoritmo': 180,                   # Timeout por algoritmo
+        'timeout_algoritmo': 300,                   # Aumentado para 5 minutos
         'W_fixo': 100,                              # W fixo para testes com n variável
         'n_fixo': 30                                # n fixo para testes com W variável
     }
+    
+    # Inicializar executor
+    executor = ExecutorExperimentos()
+    executor.timeout_algoritmo = config['timeout_algoritmo']  # Aplicar o timeout das configurações
+    
+    # Inicializar arquivos CSV
+    executor.inicializar_arquivos_csv()
     
     print("\nCONFIGURAÇÕES DO EXPERIMENTO:")
     print(f"- Valores de n: {config['valores_n']}")
@@ -75,12 +76,14 @@ def main():
     if df_n is not None and not df_n.empty:
         executor.analisar_resultados(df_n, parametro_variavel='n')
         executor.realizar_teste_t_pareado(df_n)
-        executor.realizar_analise_estatistica_completa(df_n)  # Fixed method name here
+        # CORREÇÃO 2: Usar o método correto para resumo estatístico
+        executor.gerar_resumo_resultados(df_n)  # Substituído pela função correta
 
     if df_W is not None and not df_W.empty:
         executor.analisar_resultados(df_W, parametro_variavel='W')
         executor.realizar_teste_t_pareado(df_W)
-        executor.realizar_analise_estatistica_completa(df_W)
+        # CORREÇÃO 2: Usar o método correto para resumo estatístico
+        executor.gerar_resumo_resultados(df_W)  # Substituído pela função correta
     
     # Fase 4: Geração de visualizações
     print("\n" + "-"*80)

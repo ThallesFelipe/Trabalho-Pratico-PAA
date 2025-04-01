@@ -25,6 +25,7 @@ import concurrent.futures
 import sys
 import seaborn as sns
 import platform
+from pathlib import Path
 
 # Adiciona o diretório raiz ao path para importações relativas
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -110,6 +111,9 @@ class ExecutorExperimentos:
         self.diretorio_resultados = diretorio_resultados or RESULTS_DIR
         self.diretorio_graficos = diretorio_graficos or GRAPHS_DIR
         
+        # Adicionar o timeout_algoritmo com valor padrão (será sobrescrito se definido em experiment_config.py)
+        self.timeout_algoritmo = 180  # valor padrão em segundos
+        
         # Convert paths for WSL if needed
         if self.eh_wsl:
             self.diretorio_binarios = convert_to_wsl_path(self.diretorio_binarios)
@@ -118,7 +122,7 @@ class ExecutorExperimentos:
             self.diretorio_resultados = convert_to_wsl_path(self.diretorio_resultados)
             self.diretorio_graficos = convert_to_wsl_path(self.diretorio_graficos)
         
-        print(f"Usando diretórios: {self.diretorio_binarios}, {self.diretorio_instancias}, {self.diretorio_resultados}, {self.diretorio_graficos}")
+        print(f"Usando diretórios: {self.diretorio_binarios, self.diretorio_instancias, self.diretorio_resultados, self.diretorio_graficos}")
         
         # Criar diretórios necessários se não existirem
         for diretorio in [self.diretorio_saida, self.diretorio_instancias, self.diretorio_resultados, self.diretorio_graficos]:
@@ -200,86 +204,77 @@ class ExecutorExperimentos:
         
         print("Arquivos CSV inicializados com sucesso.")
 
-    def executar_algoritmo(self, algoritmo, arquivo_instancia, timeout=180):
-        """Executa um algoritmo específico em uma instância e retorna o tempo e valor."""
-        # Determina o executável a ser usado
-        executavel = os.path.join(self.diretorio_binarios, algoritmo)
-        if self.eh_windows and not executavel.endswith('.exe'):
-            executavel += '.exe'
-        
-        # Verifica se o executável existe
-        if not os.path.exists(executavel):
-            print(f"ERRO: Executável '{executavel}' não encontrado!")
-            return None, None
-        
-        # Aumentar precisão da medição de tempo
-        import time
-        
+    def executar_algoritmo(self, algoritmo, arquivo_instancia):
+        """Executa um algoritmo específico para uma instância."""
         try:
-            print(f"Executando {algoritmo} em {arquivo_instancia}")
-            
-            # Configura handler de timeout para sistemas Unix
-            if not self.eh_windows:
+            # Configurar alarme para timeout
+            if platform.system() != "Windows":  # signal.SIGALRM não funciona no Windows
                 signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(timeout)
+                signal.alarm(self.timeout_algoritmo)
             
-            # Inicia medição de tempo com alta precisão
-            tempo_inicio = time.perf_counter()
+            # Construir o caminho para o executável
+            caminho_executavel = os.path.join(self.diretorio_binarios, algoritmo)
+            if self.eh_windows and not caminho_executavel.endswith('.exe'):
+                caminho_executavel += '.exe'
             
-            # Executa o processo com tratamento diferenciado para Windows
-            try:
-                resultado = subprocess.run(
-                    [executavel, arquivo_instancia], 
-                    capture_output=True, 
-                    text=True, 
-                    timeout=timeout
-                )
+            # Verificar se o executável existe
+            if not os.path.exists(caminho_executavel):
+                print(f"  Erro: Executável '{caminho_executavel}' não encontrado")
+                return float('nan'), None
                 
-                if not self.eh_windows:
-                    signal.alarm(0)  # Desativa o alarme após a execução
-                    
-            except subprocess.TimeoutExpired:
-                print(f"  - {algoritmo} excedeu o tempo limite de {timeout} segundos")
-                return None, None
+            # Executar o algoritmo e capturar a saída
+            resultado = subprocess.run(
+                [caminho_executavel, arquivo_instancia],
+                capture_output=True,
+                text=True,
+                check=False
+            )
             
-            # Calcula o tempo de execução com alta precisão
-            tempo_execucao = time.perf_counter() - tempo_inicio
-            
-            # Verifica se a execução foi bem-sucedida
+            # Verificar se houve erro de execução
             if resultado.returncode != 0:
-                print(f"  - {algoritmo} falhou com código {resultado.returncode}")
+                print(f"  Erro ao executar {algoritmo}: Código de retorno {resultado.returncode}")
                 if resultado.stderr:
-                    print(f"  - Erro: {resultado.stderr}")
-                return None, None
-            
-            # Analisa a saída para extrair o valor máximo
-            valor_maximo = None
-            for linha in resultado.stdout.strip().split('\n'):
-                if "Valor máximo:" in linha:
-                    try:
-                        valor_maximo = int(linha.split(":")[-1].strip())
-                        break
-                    except ValueError:
-                        print(f"  - Formato de saída inválido: '{linha}'")
-                        continue
-            
-            if valor_maximo is None:
-                print(f"  - Não foi possível obter o valor máximo da saída")
-                return None, None
+                    print(f"  Mensagem de erro: {resultado.stderr}")
+                return float('nan'), None
                 
-            return tempo_execucao, valor_maximo
+            # Extrair tempo de execução e valor da saída
+            tempo = None
+            valor = None
             
-        except (subprocess.TimeoutExpired, TimeoutException):
-            if not self.eh_windows:
-                signal.alarm(0)
-            print(f"  - {algoritmo} excedeu o tempo limite de {timeout} segundos")
-            return None, None
+            # Procurar por linha de tempo na saída
+            for linha in resultado.stdout.splitlines():
+                if "Tempo de execução:" in linha:
+                    try:
+                        tempo = float(linha.split(":")[-1].strip().split()[0])
+                    except (ValueError, IndexError):
+                        pass
+                elif "Valor máximo:" in linha:
+                    try:
+                        valor = float(linha.split(":")[-1].strip())
+                    except (ValueError, IndexError):
+                        pass
+            
+            # Verificar se conseguimos extrair os valores
+            if tempo is None:
+                print(f"  Aviso: Não foi possível extrair o tempo de execução da saída de {algoritmo}")
+                tempo = float('nan')
+            if valor is None:
+                print(f"  Aviso: Não foi possível extrair o valor máximo da saída de {algoritmo}")
+                valor = 0  # Valor padrão
+                
+            return tempo, valor
+            
+        except TimeoutException:
+            print(f"  Timeout: {algoritmo} excedeu {self.timeout_algoritmo} segundos")
+            return float(self.timeout_algoritmo), 0  # Registrar o tempo máximo e valor zero
         except Exception as e:
-            if not self.eh_windows:
+            print(f"  Erro ao executar {algoritmo}: {e}")
+            return float('nan'), 0  # Usar NaN para tempo e zero para valor
+        finally:
+            # Desativar o alarme
+            if platform.system() != "Windows":
                 signal.alarm(0)
-            print(f"  - Erro inesperado: {str(e)}")
-            return None, None
-    
+
     def executar_variando_n(self, valores_n=[10, 20, 30, 40, 50], W=50, num_instancias=5):
         """Executa experimentos variando o número de itens."""
         import os
@@ -327,7 +322,7 @@ class ExecutorExperimentos:
         # Salva resultados em CSV
         if resultados:
             df_resultados = pd.DataFrame(resultados)
-            arquivo_saida = os.path.join(self.diretorio_resultados, 'resultados_variando_n.csv')
+            arquivo_saida = Path(self.diretorio_resultados) / 'resultados_variando_n.csv'
             
             # Append to existing file if it exists and has header
             if os.path.exists(arquivo_saida) and os.path.getsize(arquivo_saida) > 0:
@@ -404,7 +399,7 @@ class ExecutorExperimentos:
         # Salva resultados em CSV
         if resultados:
             df_resultados = pd.DataFrame(resultados)
-            arquivo_saida = os.path.join(self.diretorio_resultados, 'resultados_variando_W.csv')
+            arquivo_saida = Path(self.diretorio_resultados) / 'resultados_variando_W.csv'
             
             # Append to existing file if it exists and has header
             if os.path.exists(arquivo_saida) and os.path.getsize(arquivo_saida) > 0:
@@ -425,13 +420,7 @@ class ExecutorExperimentos:
             return pd.DataFrame()
     
     def analisar_resultados(self, df_resultados, parametro_variavel='n'):
-        """
-        Analisa os resultados dos experimentos e gera gráficos.
-        
-        Args:
-            df_resultados: DataFrame com os resultados dos experimentos.
-            parametro_variavel: Parâmetro que foi variado nos experimentos ('n' ou 'W').
-        """
+        """Analisa os resultados dos experimentos e gera gráficos."""
         print("\n===== ANÁLISE DE RESULTADOS =====")
         
         # Verificar se o DataFrame está vazio
@@ -445,7 +434,23 @@ class ExecutorExperimentos:
         
         # Verificação para ver se há dados válidos após conversão
         if df_resultados['tempo'].isna().all():
-            print("Erro: Nenhum tempo válido para análise após conversão de tipos")
+            print("Aviso: Nenhum tempo válido para análise após conversão de tipos")
+            print("Criando arquivo mínimo de resultados para permitir a continuação do processo...")
+            
+            # Criar um diretório para gráficos se não existir
+            os.makedirs(self.diretorio_graficos, exist_ok=True)
+            
+            # Criar um gráfico vazio como placeholder
+            plt.figure(figsize=(8, 6))
+            plt.title(f"Sem dados válidos para análise - {parametro_variavel}")
+            plt.xlabel(f"Valor de {parametro_variavel}")
+            plt.ylabel("Tempo (s)")
+            plt.text(0.5, 0.5, "Nenhum dado válido disponível", 
+                     horizontalalignment='center', verticalalignment='center',
+                     transform=plt.gca().transAxes)
+            plt.savefig(os.path.join(self.diretorio_graficos, f'tempo_vs_{parametro_variavel}.png'))
+            plt.close()
+            
             return
         
         # Extrair algoritmos e valores do parâmetro variável
@@ -518,9 +523,9 @@ class ExecutorExperimentos:
                 tabela_resumo.append([
                     algoritmo.replace('run_', ''),
                     valor_param,
-                    f"{media:.6f}",
-                    f"±{ic_algoritmo[-1]:.6f}" if not np.isnan(ic_algoritmo[-1]) else "N/A",
-                    f"{valor_medio:.1f}" if not np.isnan(valor_medio) else "N/A"
+                    "Timeout" if np.isnan(media) else f"{media:.6f}",
+                    "N/A" if np.isnan(ic_algoritmo[-1]) else f"±{ic_algoritmo[-1]:.6f}",
+                    "N/A" if np.isnan(valor_medio) else f"{valor_medio:.1f}"
                 ])
             
             tempos_medios.append(medias_algoritmo)
@@ -993,6 +998,7 @@ class ExecutorExperimentos:
         # Check if the DataFrame is empty
         if df_resultados.empty:
             print("Warning: Empty DataFrame passed to gerar_resumo_resultados. Skipping summary generation.")
+            self._criar_relatorio_vazio()
             return
         
         # Check if required columns exist
@@ -1000,7 +1006,7 @@ class ExecutorExperimentos:
         missing_columns = [col for col in required_columns if col not in df_resultados.columns]
         if missing_columns:
             print(f"Warning: DataFrame is missing required columns: {missing_columns}. Available columns: {df_resultados.columns.tolist()}")
-            print("Skipping summary generation.")
+            self._criar_relatorio_vazio()
             return
         
         # Criar diretório para relatórios se não existir
@@ -1010,6 +1016,12 @@ class ExecutorExperimentos:
         resumo_algoritmos = df_resultados.groupby('algoritmo')['tempo'].agg(
             ['count', 'min', 'max', 'mean', 'std', 'median']
         ).reset_index()
+        
+        # Verificar se temos dados válidos
+        if resumo_algoritmos.empty or resumo_algoritmos['mean'].isna().all():
+            print("Aviso: Não há dados válidos para gerar resumo estatístico.")
+            self._criar_relatorio_vazio()
+            return
         
         # Formatar colunas para melhor legibilidade
         resumo_formatado = resumo_algoritmos.copy()
@@ -1034,10 +1046,19 @@ class ExecutorExperimentos:
             f.write(tabulate(resumo_formatado, headers='keys', tablefmt='pipe', showindex=False))
             f.write("\n\n")
             
-            # Identificar o algoritmo mais rápido em média
-            idx_mais_rapido = resumo_algoritmos['mean'].idxmin()
-            alg_mais_rapido = resumo_algoritmos.iloc[idx_mais_rapido]['algoritmo'].replace('run_', '')
-            tempo_medio = resumo_algoritmos.iloc[idx_mais_rapido]['mean']
+            # Adicionar verificação de segurança antes de determinar o algoritmo mais rápido
+            if resumo_algoritmos['mean'].isna().all():
+                alg_mais_rapido = "Indeterminado"
+                tempo_medio = float('nan')
+            else:
+                # Encontrar o índice do valor mínimo ignorando NaN
+                idx_mais_rapido = resumo_algoritmos['mean'].dropna().idxmin()
+                if pd.isna(idx_mais_rapido):
+                    alg_mais_rapido = "Indeterminado"
+                    tempo_medio = float('nan')
+                else:
+                    alg_mais_rapido = resumo_algoritmos.iloc[idx_mais_rapido]['algoritmo'].replace('run_', '')
+                    tempo_medio = resumo_algoritmos.iloc[idx_mais_rapido]['mean']
             
             f.write(f"### Conclusão Preliminar\n\n")
             f.write(f"- O algoritmo mais rápido em média foi: **{alg_mais_rapido}** com tempo médio de {tempo_medio:.6f} segundos.\n")
@@ -1084,6 +1105,21 @@ class ExecutorExperimentos:
                     f.write(f"- Tempo médio: {tempo_medio:.6f} segundos\n\n")
         
         print(f"Resumos gerados com sucesso! Verifique os arquivos em: {os.path.join(self.diretorio_resultados, 'relatorios')}")
+
+    def _criar_relatorio_vazio(self):
+        """Cria um relatório vazio quando não há dados válidos."""
+        os.makedirs(os.path.join(self.diretorio_resultados, 'relatorios'), exist_ok=True)
+        
+        with open(os.path.join(self.diretorio_resultados, 'relatorios', 'resumo_geral.md'), 'w') as f:
+            f.write("# Resumo dos Resultados - Problema da Mochila\n\n")
+            f.write("## Estatísticas Gerais por Algoritmo\n\n")
+            f.write("| Algoritmo           |   Execuções |   Tempo Mínimo (s) |   Tempo Máximo (s) |   Tempo Médio (s) |   Desvio Padrão (s) |   Mediana (s) |\n")
+            f.write("|:--------------------|------------:|-------------------:|-------------------:|------------------:|--------------------:|--------------:|\n")
+            f.write("| backtracking        |           0 |                nan |                nan |               nan |                 nan |           nan |\n")
+            f.write("| branch_and_bound    |           0 |                nan |                nan |               nan |                 nan |           nan |\n")
+            f.write("| dynamic_programming |           0 |                nan |                nan |               nan |                 nan |           nan |\n")
+        
+        print(f"Criado relatório vazio em: {os.path.join(self.diretorio_resultados, 'relatorios', 'resumo_geral.md')}")
 
     def gerar_visualizacoes_avancadas(self):
         """Gera visualizações avançadas adicionais baseadas nos resultados dos experimentos."""

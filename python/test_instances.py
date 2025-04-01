@@ -64,7 +64,7 @@ def main():
     """
     # Configurações do teste
     diretorio_instancias = os.environ.get("INSTANCES_DIR", "output/instances")
-    diretorio_teste = os.path.join(diretorio_instancias, "instancias_n10_W10")
+    diretorio_teste = os.path.join(diretorio_instancias, "instancias_n10_W20")
     
     # Lista de algoritmos a serem testados (nomes atualizados)
     algoritmos = ["run_dynamic_programming", "run_backtracking", "run_branch_and_bound"]
