@@ -28,12 +28,12 @@ def main():
     
     # Configurações
     config = {
-        'valores_n': [10, 20, 30, 40, 50],          # Valores de n
-        'valores_W': [50, 100, 150, 200, 250],      # Valores de W
-        'num_instancias': 5,                        # Instâncias por configuração
-        'timeout_algoritmo': 300,                   # Aumentado para 5 minutos
-        'W_fixo': 100,                              # W fixo para testes com n variável
-        'n_fixo': 30                                # n fixo para testes com W variável
+        'valores_n': [10, 15, 20, 25, 30, 35, 40],  # n values
+        'valores_W': [20, 40, 60, 80, 100],         # W values
+        'num_instancias': 3,                        # Number of instances per configuration
+        'timeout_algoritmo': 180,                   # Timeout in seconds
+        'W_fixo': 50,                               # Fixed W for n experiments
+        'n_fixo': 20                                # Fixed n for W experiments
     }
     
     # Inicializar executor
