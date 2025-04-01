@@ -29,13 +29,13 @@ def run_enhanced_analysis():
     
     # Enhanced configuration with more data points
     config = {
-        'valores_n': [10, 15, 20, 25, 30, 35, 40],  # n values
-        'valores_W': [20, 40, 60, 80, 100],         # W values
-        'num_instancias': 3,                        # Number of instances per configuration
-        'timeout_algoritmo': 180,                   # Timeout in seconds
-        'W_fixo': 50,                               # Fixed W for n experiments
-        'n_fixo': 20                                # Fixed n for W experiments
-}
+        'valores_n': [20, 40, 60, 80],  # n values doubling from 100
+        'valores_W': [40, 60, 80, 100],  # W values doubling from 100
+        'num_instancias': 4,                                              # 20 instances per configuration
+        'timeout_algoritmo': 300,                                          # Timeout in seconds
+        'W_fixo': 80,                                                     # Fixed W=100 for n experiments
+        'n_fixo': 40                                                      # Fixed n=400 for W experiments
+    }
     
     print("\nCONFIGURATION:")
     print(f"- n values: {config['valores_n']}")

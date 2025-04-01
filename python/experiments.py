@@ -1428,12 +1428,12 @@ def main():
     
     # Definir configurações avançadas dos experimentos
     config = {
-        'valores_n': [10, 20, 30, 40, 50, 60, 70],  # More n values for better curve fitting
-        'valores_W': [20, 50, 100, 150, 200],         # More W values
-        'num_instancias': 5,                        # Number of instances per configuration
-        'timeout_algoritmo': 300,                   # Timeout in seconds
-        'W_fixo': 100,                               # Fixed W for n experiments
-        'n_fixo': 30                                # Fixed n for W experiments
+        'valores_n': [20, 40, 60, 80],  # n values doubling from 100
+        'valores_W': [40, 60, 80, 100],  # W values doubling from 100
+        'num_instancias': 4,                                              # 20 instances per configuration
+        'timeout_algoritmo': 300,                                          # Timeout in seconds
+        'W_fixo': 80,                                                     # Fixed W=100 for n experiments
+        'n_fixo': 40                                                      # Fixed n=400 for W experiments
     }
     
     print(f"\nConfigurações dos experimentos:")
