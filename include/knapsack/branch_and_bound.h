@@ -5,8 +5,6 @@
  * Este arquivo contém a declaração do algoritmo Branch and Bound para resolver o
  * Problema da Mochila, utilizando técnicas de limitantes para podar o espaço de busca.
  *
- * @author David Souza do Nascimento - 19.2.4029
- * @author Luiz Henrique de Carvalho - 21.2.4106
  * @author Thalles Felipe Rodrigues de Almeidad Santos - 21.2.4130
  * @date Março 2025
  */
